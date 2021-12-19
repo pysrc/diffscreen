@@ -85,42 +85,52 @@ fn screen_stream(mut stream: TcpStream) {
         return;
     }
     loop {
-        // 截图
-        cap.cap(&mut data2);
-        // 做减法
-        for i in 0..dlen {
-            data1[i] = data1[i] ^ data2[i];
-        }
-        // 压缩
-        let clen = dscom::compress(&data1, &mut pres_data);
-        // 发送diff
-        encode(clen, &mut header);
-        if let Err(_) = stream.write_all(&header) {
-            return;
-        }
-        if let Err(_) = stream.write_all(&pres_data[..clen]) {
-            return;
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        // 截图
-        cap.cap(&mut data1);
-        // 做减法
-        for i in 0..dlen {
-            data2[i] = data2[i] ^ data1[i];
-        }
-        // 压缩
-        let clen = dscom::compress(&data2, &mut pres_data);
-        // 发送diff
-        encode(clen, &mut header);
-        if let Err(_) = stream.write_all(&header) {
-            return;
-        }
-        if let Err(_) = stream.write_all(&pres_data[..clen]) {
-            return;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            // 截图
+            cap.cap(&mut data2);
+            if data2 == data1 {
+                continue;
+            }
+            // 做减法
+            for i in 0..dlen {
+                data1[i] = data1[i] ^ data2[i];
+            }
+            // 压缩
+            let clen = dscom::compress(&data1, &mut pres_data);
+            // 发送diff
+            encode(clen, &mut header);
+            if let Err(_) = stream.write_all(&header) {
+                return;
+            }
+            if let Err(_) = stream.write_all(&pres_data[..clen]) {
+                return;
+            }
+            break;
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            // 截图
+            cap.cap(&mut data1);
+            if data1 == data2 {
+                continue;
+            }
+            // 做减法
+            for i in 0..dlen {
+                data2[i] = data2[i] ^ data1[i];
+            }
+            // 压缩
+            let clen = dscom::compress(&data2, &mut pres_data);
+            // 发送diff
+            encode(clen, &mut header);
+            if let Err(_) = stream.write_all(&header) {
+                return;
+            }
+            if let Err(_) = stream.write_all(&pres_data[..clen]) {
+                return;
+            }
+            break;
+        }
     }
 }

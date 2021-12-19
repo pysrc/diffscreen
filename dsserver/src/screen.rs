@@ -42,7 +42,8 @@ impl Cap {
                         std::thread::sleep(self.sleep);
                         continue;
                     } else {
-                        panic!("Error: {}", error);
+                        println!("cap error: {}", error);
+                        return;
                     }
                 }
             };
