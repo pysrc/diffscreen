@@ -1,0 +1,10 @@
+[package]
+name = "dsserver"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+scrap = "0.5"
+dscom = {path = "../dscom"}

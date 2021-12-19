@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "dscom",
+    "dsserver",
+    "dsclient"
+]
