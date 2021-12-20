@@ -10,7 +10,7 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 
-pub fn run(port: u32, pwd: String) {
+pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
     hasher.write(pwd.as_bytes());
     let pk = hasher.finish();

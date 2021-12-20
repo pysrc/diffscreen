@@ -38,7 +38,8 @@ pub fn app_run() {
     wind.set_color(Color::from_rgb(255, 255, 255));
     let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
     host_ipt.set_value("127.0.0.1:80");
-    let pwd_ipt = SecretInput::new(80, 50, 200, 25, "PASS:");
+    let mut pwd_ipt = SecretInput::new(80, 50, 200, 25, "PASS:");
+    pwd_ipt.set_value("diffscreen");
     let mut login_btn = Button::new(200, 80, 80, 40, "Login");
     // wind窗口结束绘制
     wind.end();
@@ -66,7 +67,7 @@ fn draw(app: app::App, host: String, pwd: String) {
         (pk >> (3 * 8)) as u8,
         (pk >> (2 * 8)) as u8,
         (pk >> (1 * 8)) as u8,
-        pk as u8
+        pk as u8,
     ])
     .unwrap();
     let mut suc = [0u8];
