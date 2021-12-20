@@ -41,10 +41,6 @@ fn encode(data_len: usize, res: &mut [u8]) {
 +------------+
 |   data     |
 +------------+
-
-flag:
-    0: 整个图像
-    1: 部分图像，需要与之前的做加和
 length: 数据长度
 data: 数据
 */
