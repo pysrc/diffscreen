@@ -1,4 +1,13 @@
 use core::cell::RefCell;
+use fltk::button::Button;
+use fltk::enums::Color;
+use fltk::frame::Frame;
+use fltk::input::Input;
+use fltk::input::SecretInput;
+use fltk::prelude::InputExt;
+use fltk::window::Window;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
@@ -9,26 +18,65 @@ use std::sync::RwLock;
 use fltk::app;
 use fltk::enums;
 use fltk::enums::Event;
-use fltk::frame;
 use fltk::image;
 use fltk::prelude::GroupExt;
 use fltk::prelude::ImageExt;
 use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
-use fltk::window;
 
-pub fn run(host: String) {
-    let conn = TcpStream::connect(host).unwrap();
-    let th2 = std::thread::spawn(move || {
-        app_run(conn);
+pub fn app_run() {
+    let app = app::App::default();
+    let (sw, sh) = app::screen_size();
+    // 开始绘制wind窗口
+    let mut wind = Window::new(
+        (sw / 2.0) as i32 - 170,
+        (sh / 2.0) as i32 - 70,
+        340,
+        140,
+        "Diffscreen",
+    );
+    wind.set_color(Color::from_rgb(255, 255, 255));
+    let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
+    host_ipt.set_value("127.0.0.1:80");
+    let pwd_ipt = SecretInput::new(80, 50, 200, 25, "PASS:");
+    let mut login_btn = Button::new(200, 80, 80, 40, "Login");
+    // wind窗口结束绘制
+    wind.end();
+    wind.show();
+
+    let app2 = app.clone();
+    login_btn.set_callback(move |_| {
+        wind.hide();
+        draw(app2, host_ipt.value(), pwd_ipt.value());
     });
-    th2.join().unwrap();
+    app.run().unwrap();
 }
 
-fn app_run(mut conn: TcpStream) {
+fn draw(app: app::App, host: String, pwd: String) {
+    let mut conn = TcpStream::connect(host).unwrap();
+    // 认证
+    let mut hasher = DefaultHasher::new();
+    hasher.write(pwd.as_bytes());
+    let pk = hasher.finish();
+    conn.write_all(&[
+        (pk >> (7 * 8)) as u8,
+        (pk >> (6 * 8)) as u8,
+        (pk >> (5 * 8)) as u8,
+        (pk >> (4 * 8)) as u8,
+        (pk >> (3 * 8)) as u8,
+        (pk >> (2 * 8)) as u8,
+        (pk >> (1 * 8)) as u8,
+        pk as u8
+    ])
+    .unwrap();
+    let mut suc = [0u8];
+    conn.read_exact(&mut suc).unwrap();
+    if suc[0] != 1 {
+        // 密码错误
+        return;
+    }
     // 发送指令socket
     let mut txc = conn.try_clone().unwrap();
-
     // 接收meta信息
     let mut meta = [0u8; 4];
     if let Err(_) = conn.read_exact(&mut meta) {
@@ -64,13 +112,6 @@ fn app_run(mut conn: TcpStream) {
     }
     dscom::decompress(&recv_buf[..recv_len], &mut data);
 
-    let app = app::App::default();
-    let mut wind = window::Window::default().with_size(500, 300);
-    let mut frame = frame::Frame::default().size_of(&wind);
-    wind.make_resizable(true);
-    wind.end();
-    wind.show();
-
     let _data = Arc::new(RwLock::new(data));
     let arc_data1 = Arc::clone(&_data);
     let arc_data2 = Arc::clone(&_data);
@@ -98,6 +139,13 @@ fn app_run(mut conn: TcpStream) {
             }
         }
     });
+    // 开始绘制wind2窗口
+    let mut wind_screen = Window::default().with_size(800, 600);
+    let mut frame = Frame::default().size_of(&wind_screen);
+    wind_screen.make_resizable(true);
+    wind_screen.end();
+    wind_screen.show();
+
     frame.draw(move |f| match arc_data2.read() {
         Ok(data) => {
             let d = &data;

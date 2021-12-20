@@ -3,17 +3,49 @@ use crate::screen::Cap;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 
-pub fn run(port: u32) {
+pub fn run(port: u32, pwd: String) {
+    let mut hasher = DefaultHasher::new();
+    hasher.write(pwd.as_bytes());
+    let pk = hasher.finish();
+    let suc = [
+        (pk >> (7 * 8)) as u8,
+        (pk >> (6 * 8)) as u8,
+        (pk >> (5 * 8)) as u8,
+        (pk >> (4 * 8)) as u8,
+        (pk >> (3 * 8)) as u8,
+        (pk >> (2 * 8)) as u8,
+        (pk >> (1 * 8)) as u8,
+        pk as u8,
+    ];
+
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
     for sr in listener.incoming() {
         match sr {
-            Ok(stream) => {
-                // todo 检查连接合法性
+            Ok(mut stream) => {
+                // 检查连接合法性
+                let mut check = [0u8; 8];
+                match stream.read_exact(&mut check) {
+                    Ok(_) => {
+                        if suc != check {
+                            println!("Password error");
+                            continue;
+                        }
+                    }
+                    Err(_) => {
+                        println!("Request error");
+                        continue;
+                    }
+                }
+                if let Err(_) = stream.write_all(&[1]) {
+                    continue;
+                }
                 let ss = stream.try_clone().unwrap();
                 let th1 = std::thread::spawn(move || {
                     screen_stream(ss);

@@ -3,7 +3,7 @@ use std::io::Read;
 use bzip2::{read::{BzEncoder, BzDecoder}, Compression};
 
 // 默认帧率
-pub const FPS: u64 = 20;
+pub const FPS: u64 = 30;
 
 // key事件 start
 pub const KEY_UP: u8 = 1;
