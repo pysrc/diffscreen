@@ -1,10 +1,13 @@
+use core::cell::RefCell;
 use std::io::Read;
 use std::net::TcpStream;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::RwLock;
 
 use fltk::app;
 use fltk::enums;
+use fltk::enums::Event;
 use fltk::frame;
 use fltk::image;
 use fltk::prelude::GroupExt;
@@ -100,6 +103,66 @@ fn app_run(mut conn: TcpStream) {
             image.draw(f.x(), f.y(), f.width(), f.height());
         }
         Err(_) => {}
+    });
+    let hooked = Rc::new(RefCell::new(false));
+    frame.handle(move |f, ev| {
+        let mut hk = hooked.borrow_mut();
+        match ev {
+            Event::Enter => {
+                // 进入窗口
+                println!("Enter");
+                *hk = true;
+            }
+            Event::Leave => {
+                // 离开窗口
+                println!("Leave");
+                *hk = false;
+            }
+            Event::Shortcut if *hk => {
+                // 按键按下
+                println!("KeyDown {}", app::event_key().bits() & 0xff);
+            }
+            Event::KeyUp if *hk => {
+                // 按键放开
+                println!("KeyUp {}", app::event_key().bits() & 0xff);
+            }
+            Event::Move if *hk => {
+                // 鼠标移动
+                println!("move {} {}", app::event_x(), app::event_y());
+            }
+            Event::Push if *hk => {
+                // 鼠标按下
+                println!("Push {}", app::event_key().bits() & 0xff);
+            }
+            Event::Released if *hk => {
+                // 鼠标释放
+                println!("Released {}", app::event_key().bits() & 0xff);
+            }
+            Event::Drag if *hk => {
+                // 鼠标按下移动
+                println!("Drag move {} {}", app::event_x(), app::event_y());
+            }
+            Event::MouseWheel if *hk => {
+                // app::MouseWheel::Down;
+                match app::event_dy() {
+                    app::MouseWheel::Down => {
+                        // 滚轮下滚
+                        println!("MouseWheel Down");
+                    }
+                    app::MouseWheel::Up => {
+                        // 滚轮上滚
+                        println!("MouseWheel Up");
+                    }
+                    _ => {}
+                }
+            }
+            _ => {
+                if *hk {
+                    println!("{}", ev);
+                }
+            }
+        }
+        true
     });
     let dura = 1.0 / (dscom::FPS as f64);
     while app.wait() {
