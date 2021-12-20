@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 scrap = "0.5"
+enigo = "0.0.14"
 dscom = {path = "../dscom"}

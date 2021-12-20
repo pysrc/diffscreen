@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 use std::io::Read;
+use std::io::Write;
 use std::net::TcpStream;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -18,14 +19,16 @@ use fltk::window;
 
 pub fn run(host: String) {
     let conn = TcpStream::connect(host).unwrap();
-    let sc = conn.try_clone().unwrap();
     let th2 = std::thread::spawn(move || {
-        app_run(sc);
+        app_run(conn);
     });
     th2.join().unwrap();
 }
 
 fn app_run(mut conn: TcpStream) {
+    // 发送指令socket
+    let mut txc = conn.try_clone().unwrap();
+
     // 接收meta信息
     let mut meta = [0u8; 4];
     if let Err(_) = conn.read_exact(&mut meta) {
@@ -110,48 +113,78 @@ fn app_run(mut conn: TcpStream) {
         match ev {
             Event::Enter => {
                 // 进入窗口
-                println!("Enter");
                 *hk = true;
             }
             Event::Leave => {
                 // 离开窗口
-                println!("Leave");
                 *hk = false;
+            }
+            Event::KeyDown if *hk => {
+                // 按键按下
+                txc.write_all(&[dscom::KEY_DOWN, (app::event_key().bits() & 0xff) as u8])
+                    .unwrap();
             }
             Event::Shortcut if *hk => {
                 // 按键按下
-                println!("KeyDown {}", app::event_key().bits() & 0xff);
+                txc.write_all(&[dscom::KEY_DOWN, (app::event_key().bits() & 0xff) as u8])
+                    .unwrap();
             }
             Event::KeyUp if *hk => {
                 // 按键放开
-                println!("KeyUp {}", app::event_key().bits() & 0xff);
+                txc.write_all(&[dscom::KEY_UP, (app::event_key().bits() & 0xff) as u8])
+                    .unwrap();
             }
             Event::Move if *hk => {
                 // 鼠标移动
-                println!("move {} {}", app::event_x(), app::event_y());
+                let relx = (w * app::event_x() / f.width()) as u16;
+                let rely = (h * app::event_y() / f.height()) as u16;
+                // MOVE xu xd yu yd
+                txc.write_all(&[
+                    dscom::MOVE,
+                    (relx >> 8) as u8,
+                    (relx & 0xff) as u8,
+                    (rely >> 8) as u8,
+                    (rely & 0xff) as u8,
+                ])
+                .unwrap();
             }
             Event::Push if *hk => {
                 // 鼠标按下
-                println!("Push {}", app::event_key().bits() & 0xff);
+                txc.write_all(&[
+                    dscom::MOUSE_KEY_DOWN,
+                    (app::event_key().bits() & 0xff) as u8,
+                ])
+                .unwrap();
             }
             Event::Released if *hk => {
                 // 鼠标释放
-                println!("Released {}", app::event_key().bits() & 0xff);
+                txc.write_all(&[dscom::MOUSE_KEY_UP, (app::event_key().bits() & 0xff) as u8])
+                    .unwrap();
             }
             Event::Drag if *hk => {
                 // 鼠标按下移动
-                println!("Drag move {} {}", app::event_x(), app::event_y());
+                let relx = (w * app::event_x() / f.width()) as u16;
+                let rely = (h * app::event_y() / f.height()) as u16;
+                // MOVE xu xd yu yd
+                txc.write_all(&[
+                    dscom::MOVE,
+                    (relx >> 8) as u8,
+                    (relx & 0xff) as u8,
+                    (rely >> 8) as u8,
+                    (rely & 0xff) as u8,
+                ])
+                .unwrap();
             }
             Event::MouseWheel if *hk => {
                 // app::MouseWheel::Down;
                 match app::event_dy() {
                     app::MouseWheel::Down => {
                         // 滚轮下滚
-                        println!("MouseWheel Down");
+                        txc.write_all(&[dscom::MOUSE_WHEEL_DOWN]).unwrap();
                     }
                     app::MouseWheel::Up => {
                         // 滚轮上滚
-                        println!("MouseWheel Up");
+                        txc.write_all(&[dscom::MOUSE_WHEEL_UP]).unwrap();
                     }
                     _ => {}
                 }

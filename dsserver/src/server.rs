@@ -1,4 +1,9 @@
+use crate::key_mouse;
 use crate::screen::Cap;
+use enigo::Enigo;
+use enigo::KeyboardControllable;
+use enigo::MouseControllable;
+use std::io::Read;
 use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
@@ -8,13 +13,72 @@ pub fn run(port: u32) {
     for sr in listener.incoming() {
         match sr {
             Ok(stream) => {
+                // todo 检查连接合法性
                 let ss = stream.try_clone().unwrap();
-                std::thread::spawn(move || {
+                let th1 = std::thread::spawn(move || {
                     screen_stream(ss);
                 });
+                let th2 = std::thread::spawn(move || {
+                    event(stream);
+                });
+                th1.join().unwrap();
+                th2.join().unwrap();
+                println!("Break !");
             }
             Err(e) => {
                 println!("error {}", e);
+            }
+        }
+    }
+}
+
+/**
+ * 事件处理
+ */
+fn event(mut stream: TcpStream) {
+    let mut cmd = [0u8];
+    let mut move_cmd = [0u8; 4];
+    let mut enigo = Enigo::new();
+    while let Ok(_) = stream.read_exact(&mut cmd) {
+        match cmd[0] {
+            dscom::KEY_UP => {
+                stream.read_exact(&mut cmd).unwrap();
+                if let Some(key) = key_mouse::key_to_enigo(cmd[0]) {
+                    enigo.key_up(key);
+                }
+            }
+            dscom::KEY_DOWN => {
+                stream.read_exact(&mut cmd).unwrap();
+                if let Some(key) = key_mouse::key_to_enigo(cmd[0]) {
+                    enigo.key_down(key);
+                }
+            }
+            dscom::MOUSE_KEY_UP => {
+                stream.read_exact(&mut cmd).unwrap();
+                if let Some(key) = key_mouse::mouse_to_engin(cmd[0]) {
+                    enigo.mouse_up(key);
+                }
+            }
+            dscom::MOUSE_KEY_DOWN => {
+                stream.read_exact(&mut cmd).unwrap();
+                if let Some(key) = key_mouse::mouse_to_engin(cmd[0]) {
+                    enigo.mouse_down(key);
+                }
+            }
+            dscom::MOUSE_WHEEL_UP => {
+                enigo.mouse_scroll_y(-2);
+            }
+            dscom::MOUSE_WHEEL_DOWN => {
+                enigo.mouse_scroll_y(2);
+            }
+            dscom::MOVE => {
+                stream.read_exact(&mut move_cmd).unwrap();
+                let x = ((move_cmd[0] as i32) << 8) | (move_cmd[1] as i32);
+                let y = ((move_cmd[2] as i32) << 8) | (move_cmd[3] as i32);
+                enigo.mouse_move_to(x, y);
+            }
+            _ => {
+                return;
             }
         }
     }
@@ -80,7 +144,7 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&pres_data[..clen]) {
         return;
     }
-    let dura = 1000/dscom::FPS;
+    let dura = 1000 / dscom::FPS;
     loop {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(dura));
