@@ -84,9 +84,10 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&pres_data[..clen]) {
         return;
     }
+    let dura = 1000/dscom::FPS;
     loop {
         loop {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(std::time::Duration::from_millis(dura));
             // 截图
             cap.cap(&mut data2);
             if data2 == data1 {
@@ -94,7 +95,7 @@ fn screen_stream(mut stream: TcpStream) {
             }
             // 做减法
             for i in 0..dlen {
-                data1[i] = data1[i] ^ data2[i];
+                data1[i] ^= data2[i];
             }
             // 压缩
             let clen = dscom::compress(&data1, &mut pres_data);
@@ -110,7 +111,7 @@ fn screen_stream(mut stream: TcpStream) {
         }
 
         loop {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(std::time::Duration::from_millis(dura));
             // 截图
             cap.cap(&mut data1);
             if data1 == data2 {
@@ -118,7 +119,7 @@ fn screen_stream(mut stream: TcpStream) {
             }
             // 做减法
             for i in 0..dlen {
-                data2[i] = data2[i] ^ data1[i];
+                data2[i] ^= data1[i];
             }
             // 压缩
             let clen = dscom::compress(&data2, &mut pres_data);

@@ -85,7 +85,7 @@ fn app_run(mut conn: TcpStream) {
             match arc_data1.write() {
                 Ok(mut _data) => {
                     for (i, v) in depres_data.iter().enumerate() {
-                        _data[i] = _data[i] ^ *v;
+                        _data[i] ^= *v;
                     }
                 }
                 Err(_) => {}
@@ -101,8 +101,10 @@ fn app_run(mut conn: TcpStream) {
         }
         Err(_) => {}
     });
+    let dura = 1.0 / (dscom::FPS as f64);
     while app.wait() {
         frame.redraw();
-        app::sleep(0.005);
+        // 30fps
+        app::sleep(dura);
     }
 }

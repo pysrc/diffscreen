@@ -37,13 +37,13 @@ impl Cap {
             let buffer = match cp {
                 Ok(buffer) => buffer,
                 Err(error) => {
+                    std::thread::sleep(self.sleep);
                     if error.kind() == WouldBlock {
                         // Keep spinning.
-                        std::thread::sleep(self.sleep);
                         continue;
                     } else {
                         println!("cap error: {}", error);
-                        return;
+                        continue;
                     }
                 }
             };
