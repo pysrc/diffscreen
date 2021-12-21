@@ -45,10 +45,9 @@ pub fn app_run() {
     wind.end();
     wind.show();
 
-    let app2 = app.clone();
     login_btn.set_callback(move |_| {
         wind.hide();
-        draw(app2, host_ipt.value(), pwd_ipt.value());
+        draw(app, host_ipt.value(), pwd_ipt.value());
     });
     app.run().unwrap();
 }
@@ -93,32 +92,35 @@ fn draw(app: app::App, host: String, pwd: String) {
     };
 
     // 收到的数据
-    let mut recv_buf = Vec::<u8>::with_capacity(dlen);
-    let mut data = Vec::<u8>::with_capacity(dlen);
-    let mut depres_data = Vec::<u8>::with_capacity(dlen);
-    unsafe {
-        recv_buf.set_len(dlen);
-        data.set_len(dlen);
-        depres_data.set_len(dlen);
-    }
-    // 接收第一帧数据
-    let mut header = [0u8; 3];
-    if let Err(_) = conn.read_exact(&mut header) {
-        return;
-    }
-    let recv_len = depack(&header);
-    if let Err(e) = conn.read_exact(&mut recv_buf[..recv_len]) {
-        println!("error {}", e);
-        return;
-    }
-    dscom::decompress(&recv_buf[..recv_len], &mut data);
-
+    let data = Vec::<u8>::with_capacity(dlen);
     let _data = Arc::new(RwLock::new(data));
     let arc_data1 = Arc::clone(&_data);
     let arc_data2 = Arc::clone(&_data);
 
     std::thread::spawn(move || {
+        // let mut header = [0u8; 3];
+        let mut recv_buf = Vec::<u8>::with_capacity(dscom::TRANS_MAX); // 最大接收1m压缩图像
+        unsafe {
+            recv_buf.set_len(dscom::TRANS_MAX);
+        }
+        let mut depres_data = Vec::<u8>::with_capacity(dlen);
+        // 接收第一帧数据
         let mut header = [0u8; 3];
+        if let Err(_) = conn.read_exact(&mut header) {
+            return;
+        }
+        let recv_len = depack(&header);
+        if let Err(e) = conn.read_exact(&mut recv_buf[..recv_len]) {
+            println!("error {}", e);
+            return;
+        }
+        match arc_data1.write() {
+            Ok(mut _data) => {
+                dscom::decompress(&recv_buf[..recv_len], &mut _data);
+            }
+            Err(_) => {}
+        }
+
         // 接收图像
         loop {
             if let Err(_) = conn.read_exact(&mut header) {
@@ -151,9 +153,10 @@ fn draw(app: app::App, host: String, pwd: String) {
     frame.draw(move |f| match arc_data2.read() {
         Ok(data) => {
             let d = &data;
-            let mut image = image::RgbImage::new(d, w, h, enums::ColorDepth::Rgb8).unwrap();
-            image.scale(f.width(), f.height(), false, true);
-            image.draw(f.x(), f.y(), f.width(), f.height());
+            if let Ok(mut image) = image::RgbImage::new(d, w, h, enums::ColorDepth::Rgb8) {
+                image.scale(f.width(), f.height(), false, true);
+                image.draw(f.x(), f.y(), f.width(), f.height());
+            }
         }
         Err(_) => {}
     });

@@ -147,11 +147,10 @@ fn screen_stream(mut stream: TcpStream) {
     let dlen = w * h * 3;
     let mut data2 = Vec::<u8>::with_capacity(dlen);
     let mut data1 = Vec::<u8>::with_capacity(dlen);
-    let mut pres_data = Vec::<u8>::with_capacity(dlen);
+    let mut pres_data = Vec::<u8>::with_capacity(dscom::TRANS_MAX);
     unsafe {
         data2.set_len(dlen);
         data1.set_len(dlen);
-        pres_data.set_len(dlen);
     }
 
     // 发送w, h
@@ -173,7 +172,7 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&header) {
         return;
     }
-    if let Err(_) = stream.write_all(&pres_data[..clen]) {
+    if let Err(_) = stream.write_all(&pres_data) {
         return;
     }
     let dura = 1000 / dscom::FPS;
@@ -196,7 +195,7 @@ fn screen_stream(mut stream: TcpStream) {
             if let Err(_) = stream.write_all(&header) {
                 return;
             }
-            if let Err(_) = stream.write_all(&pres_data[..clen]) {
+            if let Err(_) = stream.write_all(&pres_data) {
                 return;
             }
             break;
