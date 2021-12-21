@@ -147,7 +147,7 @@ fn screen_stream(mut stream: TcpStream) {
     let dlen = w * h * 3;
     let mut data2 = Vec::<u8>::with_capacity(dlen);
     let mut data1 = Vec::<u8>::with_capacity(dlen);
-    let mut pres_data = Vec::<u8>::with_capacity(dscom::TRANS_MAX);
+    let mut pres_data = Vec::<u8>::with_capacity(dlen);
     unsafe {
         data2.set_len(dlen);
         data1.set_len(dlen);

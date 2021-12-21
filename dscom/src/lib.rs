@@ -3,10 +3,8 @@ use std::io::Read;
 use bzip2::{read::{BzEncoder, BzDecoder}, Compression};
 
 // 默认帧率
-pub const FPS: u64 = 30;
+pub const FPS: u64 = 20;
 
-// 图像传输最大大小
-pub const TRANS_MAX: usize = 1024 * 1024;
 
 // key事件 start
 pub const KEY_UP: u8 = 1;

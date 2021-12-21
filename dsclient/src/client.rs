@@ -99,9 +99,9 @@ fn draw(app: app::App, host: String, pwd: String) {
 
     std::thread::spawn(move || {
         // let mut header = [0u8; 3];
-        let mut recv_buf = Vec::<u8>::with_capacity(dscom::TRANS_MAX); // 最大接收1m压缩图像
+        let mut recv_buf = Vec::<u8>::with_capacity(dlen);
         unsafe {
-            recv_buf.set_len(dscom::TRANS_MAX);
+            recv_buf.set_len(dlen);
         }
         let mut depres_data = Vec::<u8>::with_capacity(dlen);
         // 接收第一帧数据
@@ -173,6 +173,7 @@ fn draw(app: app::App, host: String, pwd: String) {
                 *hk = false;
             }
             Event::KeyDown if *hk => {
+                println!("d {}", app::event_key().bits());
                 // 按键按下
                 txc.write_all(&[dscom::KEY_DOWN, (app::event_key().bits() & 0xff) as u8])
                     .unwrap();
