@@ -122,12 +122,12 @@ fn draw(app: app::App, host: String, pwd: String) {
         // 接收图像
         loop {
             if let Err(_) = conn.read_exact(&mut header) {
-                app.quit();
+                app::quit();
                 return;
             }
             let recv_len = depack(&header);
             if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
-                app.quit();
+                app::quit();
                 return;
             }
             dscom::decompress(&recv_buf[..recv_len], &mut depres_data);
