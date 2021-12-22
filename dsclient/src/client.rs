@@ -148,7 +148,8 @@ fn draw(app: app::App, host: String, pwd: String) {
         }
     });
     // 开始绘制wind2窗口
-    let mut wind_screen = Window::default().with_size(800, 600);
+    let (sw, sh) = app::screen_size();
+    let mut wind_screen = Window::default().with_size((sw/2.0) as i32, (sh/2.0) as i32);
     let mut frame = Frame::default().size_of(&wind_screen);
     wind_screen.make_resizable(true);
     wind_screen.end();
