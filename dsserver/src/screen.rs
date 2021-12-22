@@ -54,11 +54,11 @@ impl Cap {
             for y in 0..h {
                 for x in 0..w {
                     let i = self.step * y + 4 * x;
-                    cap_buf[k] = buffer[i+2];
+                    cap_buf[k] = buffer[i+2] & dscom::BIT_SAVE;
                     k+=1;
-                    cap_buf[k] = buffer[i+1];
+                    cap_buf[k] = buffer[i+1] & dscom::BIT_SAVE;
                     k+=1;
-                    cap_buf[k] = buffer[i];
+                    cap_buf[k] = buffer[i] & dscom::BIT_SAVE;
                     k+=1;
                 }
             }
