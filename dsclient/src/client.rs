@@ -1,4 +1,3 @@
-use core::cell::RefCell;
 use fltk::button::Button;
 use fltk::enums::Color;
 use fltk::frame::Frame;
@@ -6,6 +5,7 @@ use fltk::input::Input;
 use fltk::input::SecretInput;
 use fltk::prelude::InputExt;
 use fltk::window::Window;
+use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -23,6 +23,8 @@ use fltk::prelude::GroupExt;
 use fltk::prelude::ImageExt;
 use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
+
+use crate::bitmap;
 
 pub fn app_run() {
     let app = app::App::default();
@@ -163,8 +165,10 @@ fn draw(app: app::App, host: String, pwd: String) {
         Err(_) => {}
     });
     let hooked = Rc::new(RefCell::new(false));
+    let press_record = Rc::new(RefCell::new(bitmap::Bitmap(0, 0)));
     frame.handle(move |f, ev| {
         let mut hk = hooked.borrow_mut();
+        let mut bmap = press_record.borrow_mut();
         match ev {
             Event::Enter => {
                 // 进入窗口
@@ -175,19 +179,24 @@ fn draw(app: app::App, host: String, pwd: String) {
                 *hk = false;
             }
             Event::KeyDown if *hk => {
-                println!("d {}", app::event_key().bits());
                 // 按键按下
-                txc.write_all(&[dscom::KEY_DOWN, (app::event_key().bits() & 0xff) as u8])
-                    .unwrap();
+                let key = (app::event_key().bits() & 0xff) as u8;
+                if bmap.push(key) {
+                    txc.write_all(&[dscom::KEY_DOWN, key]).unwrap();
+                }
             }
             Event::Shortcut if *hk => {
                 // 按键按下
-                txc.write_all(&[dscom::KEY_DOWN, (app::event_key().bits() & 0xff) as u8])
-                    .unwrap();
+                let key = (app::event_key().bits() & 0xff) as u8;
+                if bmap.push(key) {
+                    txc.write_all(&[dscom::KEY_DOWN, key]).unwrap();
+                }
             }
             Event::KeyUp if *hk => {
                 // 按键放开
-                txc.write_all(&[dscom::KEY_UP, (app::event_key().bits() & 0xff) as u8])
+                let key = (app::event_key().bits() & 0xff) as u8;
+                bmap.remove(key);
+                txc.write_all(&[dscom::KEY_UP, key])
                     .unwrap();
             }
             Event::Move if *hk => {
