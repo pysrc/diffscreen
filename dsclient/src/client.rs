@@ -135,8 +135,10 @@ fn draw(app: app::App, host: String, pwd: String) {
             dscom::decompress(&recv_buf[..recv_len], &mut depres_data);
             match arc_data1.write() {
                 Ok(mut _data) => {
-                    for (i, v) in depres_data.iter().enumerate() {
-                        _data[i] ^= *v;
+                    let mut i = 0;
+                    while i < dlen {
+                        _data[i] ^= depres_data[i];
+                        i += 1;
                     }
                 }
                 Err(_) => {}
