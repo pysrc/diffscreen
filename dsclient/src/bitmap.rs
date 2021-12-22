@@ -26,10 +26,10 @@ impl Bitmap {
 
     pub fn remove(&mut self, key: u8) {
         if key <= 127 {
-            let b = (1 << key) - 1;
+            let b = !(1 << key);
             self.1 &= b;
         } else {
-            let b = (1 << (key - 128)) - 1;
+            let b = !(1 << (key - 128));
             self.0 &= b;
         }
     }
