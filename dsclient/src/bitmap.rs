@@ -1,10 +1,11 @@
-
-
 use std::fmt::Display;
 
-pub struct Bitmap(pub u128, pub u128);
+pub struct Bitmap(u128, u128);
 
 impl Bitmap {
+    pub fn new() -> Self {
+        Bitmap(0, 0)
+    }
     pub fn push(&mut self, key: u8) -> bool {
         if key <= 127 {
             // 0-127
@@ -43,7 +44,7 @@ impl Display for Bitmap {
 
 #[test]
 fn test() {
-    let mut bm = Bitmap(0, 0);
+    let mut bm = Bitmap::new();
     assert_eq!(bm.push(0), true);
     assert_eq!(bm.push(10), true);
     assert_eq!(bm.push(127), true);
@@ -63,5 +64,4 @@ fn test() {
 
     assert_eq!(bm.push(10), true);
     assert_eq!(bm.push(168), true);
-
 }

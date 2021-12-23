@@ -166,7 +166,7 @@ fn draw(app: app::App, host: String, pwd: String) {
         Err(_) => {}
     });
     let hooked = Rc::new(RefCell::new(false));
-    let press_record = Rc::new(RefCell::new(bitmap::Bitmap(0, 0)));
+    let press_record = Rc::new(RefCell::new(bitmap::Bitmap::new()));
     frame.handle(move |f, ev| {
         let mut hk = hooked.borrow_mut();
         let mut bmap = press_record.borrow_mut();
