@@ -1,6 +1,6 @@
 
 // 默认帧率
-pub const FPS: u64 = 20;
+pub const FPS: u64 = 30;
 
 // 传输像素保留位数（右边0越多压缩程度越大）
 pub const BIT_SAVE: u8 = 0b1111_1000;
