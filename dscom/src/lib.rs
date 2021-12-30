@@ -1,12 +1,12 @@
-use std::io::Read;
-
-use bzip2::{read::{BzEncoder, BzDecoder}, Compression};
 
 // 默认帧率
 pub const FPS: u64 = 20;
 
 // 传输像素保留位数（右边0越多压缩程度越大）
 pub const BIT_SAVE: u8 = 0b1111_1000;
+
+// 传输压缩水平0-21 0消耗资源最小但是压缩率小（需要带宽大） 21消耗资源最大，但但是压缩率大（需要带宽小）
+pub const COMPRESS_LEVEL: i32 = 3;
 
 // key事件 start
 pub const KEY_UP: u8 = 1;
@@ -23,19 +23,20 @@ pub const MOVE:u8 = 7;
 
 
 pub fn compress(src: &[u8], dst: &mut Vec<u8>) -> usize {
+
     unsafe{
         dst.set_len(0);
     }
-    let mut compressor = BzEncoder::new(src, Compression::best());
-    return compressor.read_to_end(dst).unwrap();
+    zstd::stream::copy_encode(src, &mut *dst, COMPRESS_LEVEL).unwrap();
+    return dst.len();
 }
 
 pub fn decompress(src: &[u8], dst: &mut Vec<u8>) -> usize {
     unsafe {
         dst.set_len(0);
     }
-    let mut decompressor = BzDecoder::new(src);
-    return decompressor.read_to_end(dst).unwrap();
+    zstd::stream::copy_decode(src, &mut *dst).unwrap();
+    return dst.len();
 }
 
 #[cfg(test)]
