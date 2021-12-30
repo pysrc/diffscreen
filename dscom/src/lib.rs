@@ -6,7 +6,7 @@ pub const FPS: u64 = 30;
 pub const BIT_SAVE: u8 = 0b1111_1000;
 
 // 传输压缩水平0-21 0消耗资源最小但是压缩率小（需要带宽大） 21消耗资源最大，但但是压缩率大（需要带宽小）
-pub const COMPRESS_LEVEL: i32 = 3;
+pub const COMPRESS_LEVEL: i32 = 0;
 
 // key事件 start
 pub const KEY_UP: u8 = 1;
