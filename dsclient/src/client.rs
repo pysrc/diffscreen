@@ -10,7 +10,7 @@ use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use fltk::app;
@@ -52,6 +52,10 @@ pub fn app_run() {
     app.run().unwrap();
 }
 
+enum Msg {
+    Draw,
+}
+
 fn draw(app: app::App, host: String, pwd: String) {
     // 开始绘制wind2窗口
     let (sw, sh) = app::screen_size();
@@ -61,160 +65,164 @@ fn draw(app: app::App, host: String, pwd: String) {
     wind_screen.end();
     wind_screen.show();
 
+    let mut conn = TcpStream::connect(host).unwrap();
+    // 认证
+    let mut hasher = DefaultHasher::new();
+    hasher.write(pwd.as_bytes());
+    let pk = hasher.finish();
+    conn.write_all(&[
+        (pk >> (7 * 8)) as u8,
+        (pk >> (6 * 8)) as u8,
+        (pk >> (5 * 8)) as u8,
+        (pk >> (4 * 8)) as u8,
+        (pk >> (3 * 8)) as u8,
+        (pk >> (2 * 8)) as u8,
+        (pk >> (1 * 8)) as u8,
+        pk as u8,
+    ])
+    .unwrap();
+    let mut suc = [0u8];
+    conn.read_exact(&mut suc).unwrap();
+    if suc[0] != 1 {
+        // 密码错误
+        return;
+    }
+    // 发送指令socket
+    let mut txc = conn.try_clone().unwrap();
+    // 接收meta信息
+    let mut meta = [0u8; 4];
+    if let Err(_) = conn.read_exact(&mut meta) {
+        return;
+    }
+    let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
+    let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
+
+    let dlen = (w * h * 3) as usize;
+    // 解包
+    let depack = |buffer: &[u8]| -> usize {
+        ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
+    };
+
+    // 收到的数据
+    let data = vec![0u8; dlen];
+    let _data = Arc::new(RwLock::new(data));
+    let arc_data1 = Arc::clone(&_data);
+    let arc_data2 = Arc::clone(&_data);
+
+    frame.draw(move |f| match arc_data2.read() {
+        Ok(data) => unsafe {
+            if let Ok(mut image) =
+                image::RgbImage::from_data2(&data, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+            {
+                image.scale(f.width(), f.height(), false, true);
+                image.draw(f.x(), f.y(), f.width(), f.height());
+            }
+        },
+        Err(_) => {}
+    });
+    let mut hooked = false;
+    let mut bmap = bitmap::Bitmap::new();
+    let mut cmd_buf = [0u8; 5];
+    frame.handle(move |f, ev| {
+        match ev {
+            Event::Enter => {
+                // 进入窗口
+                hooked = true;
+            }
+            Event::Leave => {
+                // 离开窗口
+                hooked = false;
+            }
+            Event::KeyDown if hooked => {
+                // 按键按下
+                let key = app::event_key().bits() as u8;
+                cmd_buf[0] = dscom::KEY_DOWN;
+                cmd_buf[1] = key;
+                if bmap.push(key) {
+                    txc.write_all(&cmd_buf[..2]).unwrap();
+                }
+            }
+            Event::Shortcut if hooked => {
+                // 按键按下
+                let key = app::event_key().bits() as u8;
+                cmd_buf[0] = dscom::KEY_DOWN;
+                cmd_buf[1] = key;
+                if bmap.push(key) {
+                    txc.write_all(&cmd_buf[..2]).unwrap();
+                }
+            }
+            Event::KeyUp if hooked => {
+                // 按键放开
+                let key = app::event_key().bits() as u8;
+                bmap.remove(key);
+                cmd_buf[0] = dscom::KEY_UP;
+                cmd_buf[1] = key;
+                txc.write_all(&cmd_buf[..2]).unwrap();
+            }
+            Event::Move if hooked => {
+                // 鼠标移动
+                let relx = (w * app::event_x() / f.width()) as u16;
+                let rely = (h * app::event_y() / f.height()) as u16;
+                // MOVE xu xd yu yd
+                cmd_buf[0] = dscom::MOVE;
+                cmd_buf[1] = (relx >> 8) as u8;
+                cmd_buf[2] = relx as u8;
+                cmd_buf[3] = (rely >> 8) as u8;
+                cmd_buf[4] = rely as u8;
+                txc.write_all(&cmd_buf).unwrap();
+            }
+            Event::Push if hooked => {
+                // 鼠标按下
+                cmd_buf[0] = dscom::MOUSE_KEY_DOWN;
+                cmd_buf[1] = app::event_key().bits() as u8;
+                txc.write_all(&cmd_buf[..2]).unwrap();
+            }
+            Event::Released if hooked => {
+                // 鼠标释放
+                cmd_buf[0] = dscom::MOUSE_KEY_UP;
+                cmd_buf[1] = app::event_key().bits() as u8;
+                txc.write_all(&cmd_buf[..2]).unwrap();
+            }
+            Event::Drag if hooked => {
+                // 鼠标按下移动
+                let relx = (w * app::event_x() / f.width()) as u16;
+                let rely = (h * app::event_y() / f.height()) as u16;
+                // MOVE xu xd yu yd
+                cmd_buf[0] = dscom::MOVE;
+                cmd_buf[1] = (relx >> 8) as u8;
+                cmd_buf[2] = relx as u8;
+                cmd_buf[3] = (rely >> 8) as u8;
+                cmd_buf[4] = rely as u8;
+                txc.write_all(&cmd_buf).unwrap();
+            }
+            Event::MouseWheel if hooked => {
+                // app::MouseWheel::Down;
+                match app::event_dy() {
+                    app::MouseWheel::Down => {
+                        // 滚轮下滚
+                        cmd_buf[0] = dscom::MOUSE_WHEEL_DOWN;
+                        txc.write_all(&cmd_buf[..1]).unwrap();
+                    }
+                    app::MouseWheel::Up => {
+                        // 滚轮上滚
+                        cmd_buf[0] = dscom::MOUSE_WHEEL_UP;
+                        txc.write_all(&cmd_buf[..1]).unwrap();
+                    }
+                    _ => {}
+                }
+            }
+            _ => {
+                if hooked {
+                    println!("{}", ev);
+                }
+            }
+        }
+        true
+    });
+
+    let (tx, rx) = app::channel::<Msg>();
+
     std::thread::spawn(move || {
-        let mut conn = TcpStream::connect(host).unwrap();
-        // 认证
-        let mut hasher = DefaultHasher::new();
-        hasher.write(pwd.as_bytes());
-        let pk = hasher.finish();
-        conn.write_all(&[
-            (pk >> (7 * 8)) as u8,
-            (pk >> (6 * 8)) as u8,
-            (pk >> (5 * 8)) as u8,
-            (pk >> (4 * 8)) as u8,
-            (pk >> (3 * 8)) as u8,
-            (pk >> (2 * 8)) as u8,
-            (pk >> (1 * 8)) as u8,
-            pk as u8,
-        ])
-        .unwrap();
-        let mut suc = [0u8];
-        conn.read_exact(&mut suc).unwrap();
-        if suc[0] != 1 {
-            // 密码错误
-            return;
-        }
-        // 发送指令socket
-        let mut txc = conn.try_clone().unwrap();
-        // 接收meta信息
-        let mut meta = [0u8; 4];
-        if let Err(_) = conn.read_exact(&mut meta) {
-            return;
-        }
-        let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
-        let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
-
-        let dlen = (w * h * 3) as usize;
-        // 解包
-        let depack = |buffer: &[u8]| -> usize {
-            ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
-        };
-
-        // 收到的数据
-        let data = vec![0u8; dlen];
-        let _data = Rc::new(RwLock::new(data));
-        let arc_data1 = Rc::clone(&_data);
-        let arc_data2 = Rc::clone(&_data);
-
-        frame.draw(move |f| match arc_data2.read() {
-            Ok(data) => {
-                if let Ok(mut image) = image::RgbImage::new(&data, w, h, enums::ColorDepth::Rgb8) {
-                    image.scale(f.width(), f.height(), false, true);
-                    image.draw(f.x(), f.y(), f.width(), f.height());
-                }
-            }
-            Err(_) => {}
-        });
-        let mut hooked = false;
-        let mut bmap = bitmap::Bitmap::new();
-        let mut cmd_buf = [0u8; 5];
-        frame.handle(move |f, ev| {
-            match ev {
-                Event::Enter => {
-                    // 进入窗口
-                    hooked = true;
-                }
-                Event::Leave => {
-                    // 离开窗口
-                    hooked = false;
-                }
-                Event::KeyDown if hooked => {
-                    // 按键按下
-                    let key = app::event_key().bits() as u8;
-                    cmd_buf[0] = dscom::KEY_DOWN;
-                    cmd_buf[1] = key;
-                    if bmap.push(key) {
-                        txc.write_all(&cmd_buf[..2]).unwrap();
-                    }
-                }
-                Event::Shortcut if hooked => {
-                    // 按键按下
-                    let key = app::event_key().bits() as u8;
-                    cmd_buf[0] = dscom::KEY_DOWN;
-                    cmd_buf[1] = key;
-                    if bmap.push(key) {
-                        txc.write_all(&cmd_buf[..2]).unwrap();
-                    }
-                }
-                Event::KeyUp if hooked => {
-                    // 按键放开
-                    let key = app::event_key().bits() as u8;
-                    bmap.remove(key);
-                    cmd_buf[0] = dscom::KEY_UP;
-                    cmd_buf[1] = key;
-                    txc.write_all(&cmd_buf[..2]).unwrap();
-                }
-                Event::Move if hooked => {
-                    // 鼠标移动
-                    let relx = (w * app::event_x() / f.width()) as u16;
-                    let rely = (h * app::event_y() / f.height()) as u16;
-                    // MOVE xu xd yu yd
-                    cmd_buf[0] = dscom::MOVE;
-                    cmd_buf[1] = (relx >> 8) as u8;
-                    cmd_buf[2] = relx as u8;
-                    cmd_buf[3] = (rely >> 8) as u8;
-                    cmd_buf[4] = rely as u8;
-                    txc.write_all(&cmd_buf).unwrap();
-                }
-                Event::Push if hooked => {
-                    // 鼠标按下
-                    cmd_buf[0] = dscom::MOUSE_KEY_DOWN;
-                    cmd_buf[1] = app::event_key().bits() as u8;
-                    txc.write_all(&cmd_buf[..2]).unwrap();
-                }
-                Event::Released if hooked => {
-                    // 鼠标释放
-                    cmd_buf[0] = dscom::MOUSE_KEY_UP;
-                    cmd_buf[1] = app::event_key().bits() as u8;
-                    txc.write_all(&cmd_buf[..2]).unwrap();
-                }
-                Event::Drag if hooked => {
-                    // 鼠标按下移动
-                    let relx = (w * app::event_x() / f.width()) as u16;
-                    let rely = (h * app::event_y() / f.height()) as u16;
-                    // MOVE xu xd yu yd
-                    cmd_buf[0] = dscom::MOVE;
-                    cmd_buf[1] = (relx >> 8) as u8;
-                    cmd_buf[2] = relx as u8;
-                    cmd_buf[3] = (rely >> 8) as u8;
-                    cmd_buf[4] = rely as u8;
-                    txc.write_all(&cmd_buf).unwrap();
-                }
-                Event::MouseWheel if hooked => {
-                    // app::MouseWheel::Down;
-                    match app::event_dy() {
-                        app::MouseWheel::Down => {
-                            // 滚轮下滚
-                            cmd_buf[0] = dscom::MOUSE_WHEEL_DOWN;
-                            txc.write_all(&cmd_buf[..1]).unwrap();
-                        }
-                        app::MouseWheel::Up => {
-                            // 滚轮上滚
-                            cmd_buf[0] = dscom::MOUSE_WHEEL_UP;
-                            txc.write_all(&cmd_buf[..1]).unwrap();
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {
-                    if hooked {
-                        println!("{}", ev);
-                    }
-                }
-            }
-            true
-        });
-
         let mut recv_buf = Vec::<u8>::with_capacity(dlen);
         unsafe {
             recv_buf.set_len(dlen);
@@ -236,7 +244,7 @@ fn draw(app: app::App, host: String, pwd: String) {
             }
             Err(_) => {}
         }
-        frame.redraw();
+        tx.send(Msg::Draw);
 
         // 接收图像
         loop {
@@ -258,9 +266,15 @@ fn draw(app: app::App, host: String, pwd: String) {
                 }
                 Err(_) => {}
             }
-            frame.redraw();
+            tx.send(Msg::Draw);
         }
     });
-    app.run().unwrap();
-
+    while app.wait() {
+        match rx.recv() {
+            Some(Msg::Draw) => {
+                frame.redraw();
+            }
+            _ => {}
+        }
+    }
 }
