@@ -71,9 +71,9 @@ impl Cap {
                     let mut k = 0;
                     let mut n = 0;
                     while n < self.org_len {
-                        cap_buf[k] = buffer[n + 2] & dscom::BIT_SAVE;
-                        cap_buf[k + 1] = buffer[n + 1] & dscom::BIT_SAVE;
-                        cap_buf[k + 2] = buffer[n] & dscom::BIT_SAVE;
+                        cap_buf[k] = buffer[n + 2] & dscom::BIT_MASK;
+                        cap_buf[k + 1] = buffer[n + 1] & dscom::BIT_MASK;
+                        cap_buf[k + 2] = buffer[n] & dscom::BIT_MASK;
                         k += 3;
                         n += 4;
                     }

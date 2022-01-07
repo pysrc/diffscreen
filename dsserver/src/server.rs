@@ -119,13 +119,14 @@ fn event(mut stream: TcpStream) {
 /**
  * 编码数据header
  */
+#[inline]
 fn encode(data_len: usize, res: &mut [u8]) {
-    if data_len > 1 << 23 {
-        // 数据超长
-    }
-    res[0] = ((data_len >> 16) & 0xff) as u8;
-    res[1] = ((data_len >> 8) & 0xff) as u8;
-    res[2] = (data_len & 0xff) as u8;
+    // if data_len > 1 << 23 {
+    //     // 数据超长
+    // }
+    res[0] = (data_len >> 16) as u8;
+    res[1] = (data_len >> 8) as u8;
+    res[2] = data_len as u8;
 }
 
 /*
@@ -155,10 +156,10 @@ fn screen_stream(mut stream: TcpStream) {
 
     // 发送w, h
     let mut meta = [0u8; 4];
-    meta[0] = ((w >> 8) & 0xff) as u8;
-    meta[1] = (w & 0xff) as u8;
-    meta[2] = ((h >> 8) & 0xff) as u8;
-    meta[3] = (h & 0xff) as u8;
+    meta[0] = (w >> 8) as u8;
+    meta[1] = w as u8;
+    meta[2] = (h >> 8) as u8;
+    meta[3] = h as u8;
     if let Err(_) = stream.write_all(&meta) {
         return;
     }

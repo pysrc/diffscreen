@@ -1,12 +1,12 @@
-// 默认帧率
 use std::cell::RefCell;
 use zstd::block::Compressor;
 use zstd::block::Decompressor;
 
+// 默认帧率
 pub const FPS: u64 = 20;
 
 // 传输像素保留位数（右边0越多压缩程度越大）
-pub const BIT_SAVE: u8 = 0b1111_1000;
+pub const BIT_MASK: u8 = 0b1111_1000;
 
 // 传输压缩水平0-21 0消耗资源最小但是压缩率小（需要带宽大） 21消耗资源最大，但但是压缩率大（需要带宽小）
 pub const COMPRESS_LEVEL: i32 = 3;
