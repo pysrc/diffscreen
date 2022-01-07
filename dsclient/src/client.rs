@@ -10,7 +10,7 @@ use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::sync::RwLock;
 
 use fltk::app;
@@ -102,9 +102,9 @@ fn draw(app: app::App, host: String, pwd: String) {
 
         // 收到的数据
         let data = vec![0u8; dlen];
-        let _data = Arc::new(RwLock::new(data));
-        let arc_data1 = Arc::clone(&_data);
-        let arc_data2 = Arc::clone(&_data);
+        let _data = Rc::new(RwLock::new(data));
+        let arc_data1 = Rc::clone(&_data);
+        let arc_data2 = Rc::clone(&_data);
 
         frame.draw(move |f| match arc_data2.read() {
             Ok(data) => {
