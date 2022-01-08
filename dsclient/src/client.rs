@@ -47,7 +47,7 @@ pub fn app_run() {
 
     login_btn.set_callback(move |_| {
         wind.hide();
-        draw(app, host_ipt.value(), pwd_ipt.value());
+        draw(host_ipt.value(), pwd_ipt.value());
     });
     app.run().unwrap();
 }
@@ -56,10 +56,18 @@ enum Msg {
     Draw,
 }
 
-fn draw(app: app::App, host: String, pwd: String) {
+// 解包
+#[inline]
+fn depack(buffer: &[u8]) -> usize {
+    ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
+}
+
+fn draw(host: String, pwd: String) {
     // 开始绘制wind2窗口
     let (sw, sh) = app::screen_size();
-    let mut wind_screen = Window::default().with_size((sw / 2.0) as i32, (sh / 2.0) as i32);
+    let mut wind_screen = Window::default()
+        .with_size((sw / 2.0) as i32, (sh / 2.0) as i32)
+        .with_label("Diffscreen");
     let mut frame = Frame::default().size_of(&wind_screen);
     wind_screen.make_resizable(true);
     wind_screen.end();
@@ -98,10 +106,6 @@ fn draw(app: app::App, host: String, pwd: String) {
     let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
     let dlen = (w * h * 3) as usize;
-    // 解包
-    let depack = |buffer: &[u8]| -> usize {
-        ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
-    };
 
     // 收到的数据
     let data = vec![0u8; dlen];
@@ -269,7 +273,7 @@ fn draw(app: app::App, host: String, pwd: String) {
             tx.send(Msg::Draw);
         }
     });
-    while app.wait() {
+    while app::wait() {
         match rx.recv() {
             Some(Msg::Draw) => {
                 frame.redraw();
