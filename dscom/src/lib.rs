@@ -32,9 +32,7 @@ pub fn compress(src: &[u8], dst: &mut Vec<u8>) -> usize {
     }
     return COMPRESSOR.with(|c| {
         let mut comp = c.borrow_mut();
-        return comp
-            .compress_to_buffer(src, &mut *dst, COMPRESS_LEVEL)
-            .unwrap();
+        return comp.compress_to_buffer(src, dst, COMPRESS_LEVEL).unwrap();
     });
 }
 
@@ -44,7 +42,7 @@ pub fn decompress(src: &[u8], dst: &mut Vec<u8>) -> usize {
     }
     return DECOMPRESSOR.with(|d| {
         let mut dcomp = d.borrow_mut();
-        return dcomp.decompress_to_buffer(src, &mut *dst).unwrap();
+        return dcomp.decompress_to_buffer(src, dst).unwrap();
     });
 }
 
