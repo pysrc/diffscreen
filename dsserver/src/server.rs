@@ -25,21 +25,23 @@ pub fn run(port: u16, pwd: String) {
         (pk >> (1 * 8)) as u8,
         pk as u8,
     ];
-    let (tx4, rx) = channel::<TcpStream>();
-    let tx6 = tx4.clone();
-    std::thread::spawn(move || {
-        let listener_ipv4 = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-        for sr in listener_ipv4.incoming() {
-            match sr {
-                Ok(stream) => {
-                    tx4.send(stream).unwrap();
-                }
-                Err(e) => {
-                    println!("error {}", e);
+    let (tx6, rx) = channel::<TcpStream>();
+    if cfg!(target_os = "windows") {
+        let tx4 = tx6.clone();
+        std::thread::spawn(move || {
+            let listener_ipv4 = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+            for sr in listener_ipv4.incoming() {
+                match sr {
+                    Ok(stream) => {
+                        tx4.send(stream).unwrap();
+                    }
+                    Err(e) => {
+                        println!("error {}", e);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     std::thread::spawn(move || {
         let listener_ipv6 = TcpListener::bind(format!("[::0]:{}", port)).unwrap();
         for sr in listener_ipv6.incoming() {
