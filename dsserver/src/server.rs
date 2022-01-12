@@ -9,6 +9,7 @@ use std::io::Read;
 use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::sync::mpsc::channel;
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -24,10 +25,37 @@ pub fn run(port: u16, pwd: String) {
         (pk >> (1 * 8)) as u8,
         pk as u8,
     ];
+    let (tx4, rx) = channel::<TcpStream>();
+    let tx6 = tx4.clone();
+    std::thread::spawn(move || {
+        let listener_ipv4 = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+        for sr in listener_ipv4.incoming() {
+            match sr {
+                Ok(stream) => {
+                    tx4.send(stream).unwrap();
+                }
+                Err(e) => {
+                    println!("error {}", e);
+                }
+            }
+        }
+    });
+    std::thread::spawn(move || {
+        let listener_ipv6 = TcpListener::bind(format!("[::0]:{}", port)).unwrap();
+        for sr in listener_ipv6.incoming() {
+            match sr {
+                Ok(stream) => {
+                    tx6.send(stream).unwrap();
+                }
+                Err(e) => {
+                    println!("error {}", e);
+                }
+            }
+        }
+    });
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-    for sr in listener.incoming() {
-        match sr {
+    loop {
+        match rx.recv() {
             Ok(mut stream) => {
                 // 检查连接合法性
                 let mut check = [0u8; 8];
@@ -57,8 +85,8 @@ pub fn run(port: u16, pwd: String) {
                 th2.join().unwrap();
                 println!("Break !");
             }
-            Err(e) => {
-                println!("error {}", e);
+            Err(_) => {
+                return;
             }
         }
     }
