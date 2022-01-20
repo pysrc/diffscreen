@@ -229,6 +229,7 @@ fn screen_stream(mut stream: TcpStream) {
             if let Err(_) = stream.write_all(&pres_data) {
                 return;
             }
+            dscom::skip(clen);
             break;
         }
 
@@ -253,6 +254,7 @@ fn screen_stream(mut stream: TcpStream) {
             if let Err(_) = stream.write_all(&pres_data[..clen]) {
                 return;
             }
+            dscom::skip(clen);
             break;
         }
     }
