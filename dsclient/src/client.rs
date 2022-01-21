@@ -23,6 +23,7 @@ use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
 
 use crate::bitmap;
+use crate::util;
 
 pub fn app_run() {
     let app = app::App::default();
@@ -244,7 +245,7 @@ fn draw(host: String, pwd: String) {
         }
         match arc_data1.write() {
             Ok(mut _data) => {
-                dscom::decompress(&recv_buf[..recv_len], &mut _data);
+                util::decompress(&recv_buf[..recv_len], &mut _data);
             }
             Err(_) => {}
         }
@@ -259,7 +260,7 @@ fn draw(host: String, pwd: String) {
             if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
                 return;
             }
-            dscom::decompress(&recv_buf[..recv_len], &mut depres_data);
+            util::decompress(&recv_buf[..recv_len], &mut depres_data);
             match arc_data1.write() {
                 Ok(mut _data) => {
                     let mut i = 0;

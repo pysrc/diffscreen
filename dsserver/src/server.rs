@@ -1,5 +1,7 @@
+use crate::config;
 use crate::key_mouse;
 use crate::screen::Cap;
+use crate::util;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
@@ -198,7 +200,7 @@ fn screen_stream(mut stream: TcpStream) {
 
     // 截第一张图
     cap.cap(&mut data1);
-    let clen = dscom::compress(&data1, &mut pres_data);
+    let clen = util::compress(&data1, &mut pres_data);
     encode(clen, &mut header);
     if let Err(_) = stream.write_all(&header) {
         return;
@@ -206,7 +208,7 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&pres_data) {
         return;
     }
-    let dura = 1000 / dscom::FPS;
+    let dura = 1000 / config::FPS;
     loop {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(dura));
@@ -220,7 +222,7 @@ fn screen_stream(mut stream: TcpStream) {
                 data1[i] ^= data2[i];
             }
             // 压缩
-            let clen = dscom::compress(&data1, &mut pres_data);
+            let clen = util::compress(&data1, &mut pres_data);
             // 发送diff
             encode(clen, &mut header);
             if let Err(_) = stream.write_all(&header) {
@@ -229,7 +231,7 @@ fn screen_stream(mut stream: TcpStream) {
             if let Err(_) = stream.write_all(&pres_data) {
                 return;
             }
-            dscom::skip(clen);
+            util::skip(clen);
             break;
         }
 
@@ -245,7 +247,7 @@ fn screen_stream(mut stream: TcpStream) {
                 data2[i] ^= data1[i];
             }
             // 压缩
-            let clen = dscom::compress(&data2, &mut pres_data);
+            let clen = util::compress(&data2, &mut pres_data);
             // 发送diff
             encode(clen, &mut header);
             if let Err(_) = stream.write_all(&header) {
@@ -254,7 +256,7 @@ fn screen_stream(mut stream: TcpStream) {
             if let Err(_) = stream.write_all(&pres_data[..clen]) {
                 return;
             }
-            dscom::skip(clen);
+            util::skip(clen);
             break;
         }
     }

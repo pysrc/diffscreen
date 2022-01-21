@@ -3,6 +3,8 @@ use scrap::Display;
 use std::io::ErrorKind::WouldBlock;
 use std::time::Duration;
 
+use crate::config;
+
 /**
  * 截屏
  */
@@ -31,8 +33,7 @@ impl Cap {
         drop(self.capturer.take());
         let display = match Display::primary() {
             Ok(display) => display,
-            Err(e) => {
-                println!("{}", e);
+            Err(_) => {
                 return;
             }
         };
@@ -71,9 +72,9 @@ impl Cap {
                     let mut k = 0;
                     let mut n = 0;
                     while n < self.org_len {
-                        cap_buf[k] = buffer[n + 2] & dscom::BIT_MASK;
-                        cap_buf[k + 1] = buffer[n + 1] & dscom::BIT_MASK;
-                        cap_buf[k + 2] = buffer[n] & dscom::BIT_MASK;
+                        cap_buf[k] = buffer[n + 2] & config::BIT_MASK;
+                        cap_buf[k + 1] = buffer[n + 1] & config::BIT_MASK;
+                        cap_buf[k + 2] = buffer[n] & config::BIT_MASK;
                         k += 3;
                         n += 4;
                     }
