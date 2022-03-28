@@ -218,9 +218,12 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            for i in 0..dlen {
-                data1[i] ^= data2[i];
-            }
+            data1.iter_mut().zip(data2.iter()).for_each(|(d1, d2)|{
+                *d1 ^= *d2;
+            });
+            // for i in 0..dlen {
+            //     data1[i] ^= data2[i];
+            // }
             // 压缩
             let clen = util::compress(&data1, &mut pres_data);
             // 发送diff
@@ -243,9 +246,12 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            for i in 0..dlen {
-                data2[i] ^= data1[i];
-            }
+            data2.iter_mut().zip(data1.iter()).for_each(|(d2, d1)|{
+                *d2 ^= *d1;
+            });
+            // for i in 0..dlen {
+            //     data2[i] ^= data1[i];
+            // }
             // 压缩
             let clen = util::compress(&data2, &mut pres_data);
             // 发送diff

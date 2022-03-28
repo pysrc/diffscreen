@@ -263,11 +263,14 @@ fn draw(host: String, pwd: String) {
             util::decompress(&recv_buf[..recv_len], &mut depres_data);
             match arc_data1.write() {
                 Ok(mut _data) => {
-                    let mut i = 0;
-                    while i < dlen {
-                        _data[i] ^= depres_data[i];
-                        i += 1;
-                    }
+                    _data.iter_mut().zip(depres_data.iter()).for_each(|(_d, d)|{
+                        *_d ^= *d;
+                    });
+                    // let mut i = 0;
+                    // while i < dlen {
+                    //     _data[i] ^= depres_data[i];
+                    //     i += 1;
+                    // }
                 }
                 Err(_) => {}
             }
