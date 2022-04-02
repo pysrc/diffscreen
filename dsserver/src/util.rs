@@ -17,6 +17,7 @@ thread_local! {
     static COMPRESSOR: RefCell<Compressor>  = RefCell::new(Compressor::new());
 }
 
+#[inline]
 pub fn compress(src: &[u8], dst: &mut Vec<u8>) -> usize {
     unsafe {
         dst.set_len(0);

@@ -44,9 +44,11 @@ impl Cap {
         };
         self.capturer = Some(capturer);
     }
+    #[inline]
     pub fn wh(&self) -> (usize, usize) {
         return (self.w, self.h);
     }
+    #[inline]
     pub fn cap(&mut self, cap_buf: &mut [u8]) {
         loop {
             match &mut self.capturer {

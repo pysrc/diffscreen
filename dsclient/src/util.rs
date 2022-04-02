@@ -5,6 +5,7 @@ thread_local! {
     static DECOMPRESSOR: RefCell<Decompressor> = RefCell::new(Decompressor::new());
 }
 
+#[inline]
 pub fn decompress(src: &[u8], dst: &mut Vec<u8>) -> usize {
     unsafe {
         dst.set_len(0);
