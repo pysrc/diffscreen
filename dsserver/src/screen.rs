@@ -69,7 +69,7 @@ impl Cap {
                     };
 
                     // 转换成rgb图像数组
-                    cap_buf.chunks_exact_mut(3).into_iter().zip(buffer.chunks_exact(4).into_iter()).for_each(|(c, b)|{
+                    cap_buf.chunks_exact_mut(3).zip(buffer.chunks_exact(4)).for_each(|(c, b)|{
                         c[0] = b[2] & config::BIT_MASK;
                         c[1] = b[1] & config::BIT_MASK;
                         c[2] = b[0] & config::BIT_MASK;
