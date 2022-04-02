@@ -11,7 +11,7 @@ use crate::config;
 pub struct Cap {
     w: usize,
     h: usize,
-    org_len: usize,
+    // org_len: usize,
     capturer: Option<Capturer>,
     sleep: Duration,
 }
@@ -23,7 +23,7 @@ impl Cap {
         Cap {
             w,
             h,
-            org_len: w * h * 4,
+            // org_len: w * h * 4,
             capturer: Some(capturer),
             sleep: Duration::new(1, 0) / 60,
         }
@@ -69,15 +69,20 @@ impl Cap {
                     };
 
                     // 转换成rgb图像数组
-                    let mut k = 0;
-                    let mut n = 0;
-                    while n < self.org_len {
-                        cap_buf[k] = buffer[n + 2] & config::BIT_MASK;
-                        cap_buf[k + 1] = buffer[n + 1] & config::BIT_MASK;
-                        cap_buf[k + 2] = buffer[n] & config::BIT_MASK;
-                        k += 3;
-                        n += 4;
-                    }
+                    cap_buf.chunks_exact_mut(3).into_iter().zip(buffer.chunks_exact(4).into_iter()).for_each(|(c, b)|{
+                        c[0] = b[2] & config::BIT_MASK;
+                        c[1] = b[1] & config::BIT_MASK;
+                        c[2] = b[0] & config::BIT_MASK;
+                    });
+                    // let mut k = 0;
+                    // let mut n = 0;
+                    // while n < self.org_len {
+                    //     cap_buf[k] = buffer[n + 2] & config::BIT_MASK;
+                    //     cap_buf[k + 1] = buffer[n + 1] & config::BIT_MASK;
+                    //     cap_buf[k + 2] = buffer[n] & config::BIT_MASK;
+                    //     k += 3;
+                    //     n += 4;
+                    // }
                     break;
                 }
                 None => {
