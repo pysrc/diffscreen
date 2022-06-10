@@ -67,6 +67,7 @@ pub fn run(port: u16, pwd: String) {
                     Ok(_) => {
                         if suc != check {
                             println!("Password error");
+                            let _ = stream.write_all(&[2]);
                             continue;
                         }
                     }
