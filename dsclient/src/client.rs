@@ -64,21 +64,6 @@ fn depack(buffer: &[u8]) -> usize {
 }
 
 fn draw(host: String, pwd: String) {
-
-    let (sw, sh) = app::screen_size();
-    // 显示正连接
-    let mut wait_wind = Window::default()
-        .with_size(340, 140)
-        .with_pos((sw / 2.0) as i32 - 170, (sh / 2.0) as i32 - 70)
-        .with_label("Wait for...");
-    wait_wind.set_color(Color::from_rgb(255, 255, 255));
-
-    let mut frm = Frame::new(120, 40, 80, 40, "Wait for ...");
-    frm.set_label_size(20);
-    frm.set_label_color(Color::Red);
-    wait_wind.end();
-    wait_wind.show();
-
     let mut conn = TcpStream::connect(host).unwrap();
     // 认证
     let mut hasher = DefaultHasher::new();
@@ -98,15 +83,26 @@ fn draw(host: String, pwd: String) {
     let mut suc = [0u8];
     conn.read_exact(&mut suc).unwrap();
     if suc[0] != 1 {
+        let (sw, sh) = app::screen_size();
+        // 显示正连接
+        let mut wait_wind = Window::default()
+            .with_size(340, 140)
+            .with_pos((sw / 2.0) as i32 - 170, (sh / 2.0) as i32 - 70)
+            .with_label("Wait for...");
+        wait_wind.set_color(Color::from_rgb(255, 255, 255));
+
+        let mut frm = Frame::new(120, 40, 80, 40, "");
+        frm.set_label_size(20);
+        frm.set_label_color(Color::Red);
+        wait_wind.end();
         if suc[0] == 2 {
             frm.set_label("Password error !");
         } else {
             frm.set_label("Some error !");
         }
-        wait_wind.redraw();
+        wait_wind.show();
         return;
     }
-    wait_wind.hide();
 
     // 开始绘制wind2窗口
     let (sw, sh) = app::screen_size();
@@ -117,7 +113,6 @@ fn draw(host: String, pwd: String) {
     wind_screen.make_resizable(true);
     wind_screen.end();
     wind_screen.show();
-
 
     // 发送指令socket
     let mut txc = conn.try_clone().unwrap();
