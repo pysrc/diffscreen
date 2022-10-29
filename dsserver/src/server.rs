@@ -1,3 +1,4 @@
+use crate::config::COMPRESS_LEVEL;
 use crate::key_mouse;
 use crate::screen::Cap;
 use crate::util;
@@ -172,6 +173,7 @@ length: 数据长度
 data: 数据
 */
 fn screen_stream(mut stream: TcpStream) {
+    let mut ctx = zstd::zstd_safe::CCtx::create();
     let mut cap = Cap::new();
 
     let (w, h) = cap.wh();
@@ -198,7 +200,11 @@ fn screen_stream(mut stream: TcpStream) {
 
     // 截第一张图
     cap.cap(&mut data1);
-    let clen = util::compress(&data1, &mut pres_data);
+    unsafe {
+        pres_data.set_len(0);
+    }
+    let clen = ctx.compress(&mut pres_data, &data1, COMPRESS_LEVEL).unwrap();
+    // let clen = util::compress(&data1, &mut pres_data);
     encode(clen, &mut header);
     if let Err(_) = stream.write_all(&header) {
         return;
@@ -219,7 +225,11 @@ fn screen_stream(mut stream: TcpStream) {
                 *d1 ^= *d2;
             });
             // 压缩
-            let clen = util::compress(&data1, &mut pres_data);
+            unsafe {
+                pres_data.set_len(0);
+            }
+            let clen = ctx.compress(&mut pres_data, &data1, COMPRESS_LEVEL).unwrap();
+            // let clen = util::compress(&data1, &mut pres_data);
             // 发送diff
             encode(clen, &mut header);
             if let Err(_) = stream.write_all(&header) {
@@ -243,7 +253,11 @@ fn screen_stream(mut stream: TcpStream) {
                 *d2 ^= *d1;
             });
             // 压缩
-            let clen = util::compress(&data2, &mut pres_data);
+            unsafe {
+                pres_data.set_len(0);
+            }
+            let clen = ctx.compress(&mut pres_data, &data2, COMPRESS_LEVEL).unwrap();
+            // let clen = util::compress(&data2, &mut pres_data);
             // 发送diff
             encode(clen, &mut header);
             if let Err(_) = stream.write_all(&header) {

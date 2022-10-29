@@ -23,7 +23,7 @@ use fltk::prelude::WidgetExt;
 use rayon::prelude::*;
 
 use crate::bitmap;
-use crate::util;
+// use crate::util;
 
 pub fn app_run() {
     let app = app::App::default();
@@ -230,6 +230,7 @@ fn draw(host: String, pwd: String) {
     let (tx, rx) = app::channel::<Msg>();
 
     std::thread::spawn(move || {
+        let mut ctx = zstd::zstd_safe::DCtx::create();
         let mut recv_buf = Vec::<u8>::with_capacity(dlen);
         unsafe {
             recv_buf.set_len(dlen);
@@ -246,7 +247,8 @@ fn draw(host: String, pwd: String) {
             return;
         }
         let mut data = Vec::<u8>::with_capacity(dlen);
-        util::decompress(&recv_buf[..recv_len], &mut data);
+        ctx.decompress(&mut data, &recv_buf[..recv_len]).unwrap();
+        // util::decompress(&recv_buf[..recv_len], &mut data);
         img_tx.send(data).unwrap();
         tx.send(Msg::Draw);
 
@@ -259,7 +261,11 @@ fn draw(host: String, pwd: String) {
                 if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
                     return;
                 }
-                util::decompress(&recv_buf[..recv_len], &mut depres_data);
+                unsafe {
+                    depres_data.set_len(0);
+                }
+                ctx.decompress(&mut depres_data, &recv_buf[..recv_len]).unwrap();
+                // util::decompress(&recv_buf[..recv_len], &mut depres_data);
                 data
                     .par_iter_mut()
                     .zip(depres_data.par_iter())
