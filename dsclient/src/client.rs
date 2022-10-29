@@ -127,7 +127,7 @@ fn draw(host: String, pwd: String) {
     
     let (img_tx, img_rx) = mpsc::channel::<Vec<u8>>();
     let (img_back_tx, img_back_rx) = mpsc::channel::<Vec<u8>>();
-    img_tx.send(vec![0u8;dlen]).unwrap();
+    // img_tx.send(vec![0u8;dlen]).unwrap();
     frame.draw(move |f|{
         if let Ok(data) = img_rx.recv() {
             unsafe {
