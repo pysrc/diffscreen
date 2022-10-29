@@ -249,7 +249,6 @@ fn draw(host: String, pwd: String) {
             recv_buf.set_len(dlen);
         }
         let mut depres_data = Vec::<u8>::with_capacity(dlen);
-        let mut normal_data = vec![0u8; dlen];
         // 接收第一帧数据
         let mut header = [0u8; 3];
         if let Err(_) = conn.read_exact(&mut header) {
@@ -260,17 +259,8 @@ fn draw(host: String, pwd: String) {
             println!("error {}", e);
             return;
         }
-        util::decompress(&recv_buf[..recv_len], &mut depres_data);
-        normal_data
-            .par_iter_mut()
-            .zip(depres_data.par_iter())
-            .for_each(|(_d, d)| {
-                *_d = *d;
-            });
-        let mut data = vec![0u8; dlen];
-        data.par_iter_mut().zip(normal_data.par_iter()).for_each(|(_d, d)| {
-            *_d = *d;
-        });
+        let mut data = Vec::<u8>::with_capacity(dlen);
+        util::decompress(&recv_buf[..recv_len], &mut data);
         img_tx.send(data).unwrap();
         tx.send(Msg::Draw);
 
@@ -284,15 +274,12 @@ fn draw(host: String, pwd: String) {
                     return;
                 }
                 util::decompress(&recv_buf[..recv_len], &mut depres_data);
-                normal_data
+                data
                     .par_iter_mut()
                     .zip(depres_data.par_iter())
                     .for_each(|(_d, d)| {
                         *_d ^= *d;
                     });
-                data.par_iter_mut().zip(normal_data.par_iter()).for_each(|(_d, d)| {
-                    *_d = *d;
-                });
                 img_tx.send(data).unwrap();
                 tx.send(Msg::Draw);
             }

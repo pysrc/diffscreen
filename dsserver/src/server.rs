@@ -1,4 +1,3 @@
-use crate::config;
 use crate::key_mouse;
 use crate::screen::Cap;
 use crate::util;
@@ -207,10 +206,9 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&pres_data) {
         return;
     }
-    let dura = 1000 / config::FPS;
+    // let dura = 1000 / config::FPS;
     loop {
         loop {
-            std::thread::sleep(std::time::Duration::from_millis(dura));
             // 截图
             cap.cap(&mut data2);
             if data2 == data1 {
@@ -235,7 +233,6 @@ fn screen_stream(mut stream: TcpStream) {
         }
 
         loop {
-            std::thread::sleep(std::time::Duration::from_millis(dura));
             // 截图
             cap.cap(&mut data1);
             if data1 == data2 {
