@@ -83,25 +83,11 @@ fn draw(host: String, pwd: String) {
     let mut suc = [0u8];
     conn.read_exact(&mut suc).unwrap();
     if suc[0] != 1 {
-        let (sw, sh) = app::screen_size();
-        // 显示正连接
-        let mut wait_wind = Window::default()
-            .with_size(340, 140)
-            .with_pos((sw / 2.0) as i32 - 170, (sh / 2.0) as i32 - 70)
-            .with_label("Wait for...");
-        wait_wind.set_color(Color::from_rgb(255, 255, 255));
-
-        let mut frm = Frame::new(120, 40, 80, 40, "");
-        frm.set_label_size(20);
-        frm.set_label_color(Color::Red);
-        wait_wind.end();
         if suc[0] == 2 {
-            frm.set_label("Password error !");
+            panic!("Password error !");
         } else {
-            frm.set_label("Some error !");
+            panic!("Some error !");
         }
-        wait_wind.show();
-        return;
     }
 
     // 开始绘制wind2窗口
