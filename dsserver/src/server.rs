@@ -12,6 +12,7 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
+use rayon::prelude::*;
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -154,9 +155,6 @@ fn event(mut stream: TcpStream) {
  */
 #[inline]
 fn encode(data_len: usize, res: &mut [u8]) {
-    // if data_len > 1 << 23 {
-    //     // 数据超长
-    // }
     res[0] = (data_len >> 16) as u8;
     res[1] = (data_len >> 8) as u8;
     res[2] = data_len as u8;
@@ -219,12 +217,9 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            data1.iter_mut().zip(data2.iter()).for_each(|(d1, d2)|{
+            data1.par_iter_mut().zip(data2.par_iter()).for_each(|(d1, d2)|{
                 *d1 ^= *d2;
             });
-            // for i in 0..dlen {
-            //     data1[i] ^= data2[i];
-            // }
             // 压缩
             let clen = util::compress(&data1, &mut pres_data);
             // 发送diff
@@ -247,12 +242,9 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            data2.iter_mut().zip(data1.iter()).for_each(|(d2, d1)|{
+            data2.par_iter_mut().zip(data1.par_iter()).for_each(|(d2, d1)|{
                 *d2 ^= *d1;
             });
-            // for i in 0..dlen {
-            //     data2[i] ^= data1[i];
-            // }
             // 压缩
             let clen = util::compress(&data2, &mut pres_data);
             // 发送diff

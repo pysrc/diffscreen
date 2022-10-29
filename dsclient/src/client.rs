@@ -20,6 +20,7 @@ use fltk::prelude::GroupExt;
 use fltk::prelude::ImageExt;
 use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
+use rayon::prelude::*;
 
 use crate::bitmap;
 use crate::util;
@@ -124,14 +125,15 @@ fn draw(host: String, pwd: String) {
     let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
     let dlen = (w * h * 3) as usize;
-    
+
     let (img_tx, img_rx) = mpsc::channel::<Vec<u8>>();
     let (img_back_tx, img_back_rx) = mpsc::channel::<Vec<u8>>();
-    // img_tx.send(vec![0u8;dlen]).unwrap();
-    frame.draw(move |f|{
-        if let Ok(data) = img_rx.recv() {
+    frame.draw(move |f| {
+        if let Ok(data) = img_rx.recv_timeout(std::time::Duration::from_millis(10)) {
             unsafe {
-                if let Ok(mut image) = image::RgbImage::from_data2(&data, w, h, enums::ColorDepth::Rgb8 as i32, 0) {
+                if let Ok(mut image) =
+                    image::RgbImage::from_data2(&data, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+                {
                     image.scale(f.width(), f.height(), false, true);
                     image.draw(f.x(), f.y(), f.width(), f.height());
                 }
@@ -247,7 +249,7 @@ fn draw(host: String, pwd: String) {
             recv_buf.set_len(dlen);
         }
         let mut depres_data = Vec::<u8>::with_capacity(dlen);
-        let mut normal_data = vec![0u8;dlen];
+        let mut normal_data = vec![0u8; dlen];
         // 接收第一帧数据
         let mut header = [0u8; 3];
         if let Err(_) = conn.read_exact(&mut header) {
@@ -260,20 +262,17 @@ fn draw(host: String, pwd: String) {
         }
         util::decompress(&recv_buf[..recv_len], &mut depres_data);
         normal_data
-        .iter_mut()
-        .zip(depres_data.iter())
-        .for_each(|(_d, d)| {
-            *_d = *d;
-        });
-        let mut data = vec![0u8;dlen];
-        data
-            .iter_mut()
-            .zip(normal_data.iter())
+            .par_iter_mut()
+            .zip(depres_data.par_iter())
             .for_each(|(_d, d)| {
                 *_d = *d;
             });
-            img_tx.send(data).unwrap();
-            tx.send(Msg::Draw);
+        let mut data = vec![0u8; dlen];
+        data.par_iter_mut().zip(normal_data.par_iter()).for_each(|(_d, d)| {
+            *_d = *d;
+        });
+        img_tx.send(data).unwrap();
+        tx.send(Msg::Draw);
 
         loop {
             if let Ok(mut data) = img_back_rx.recv() {
@@ -286,15 +285,12 @@ fn draw(host: String, pwd: String) {
                 }
                 util::decompress(&recv_buf[..recv_len], &mut depres_data);
                 normal_data
-                    .iter_mut()
-                    .zip(depres_data.iter())
+                    .par_iter_mut()
+                    .zip(depres_data.par_iter())
                     .for_each(|(_d, d)| {
                         *_d ^= *d;
                     });
-                data
-                .iter_mut()
-                .zip(normal_data.iter())
-                .for_each(|(_d, d)| {
+                data.par_iter_mut().zip(normal_data.par_iter()).for_each(|(_d, d)| {
                     *_d = *d;
                 });
                 img_tx.send(data).unwrap();

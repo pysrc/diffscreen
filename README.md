@@ -6,8 +6,9 @@ The python implemented: https://github.com/pysrc/remote-desktop
 
 ## Build
 
-`cargo build --release`
+Need: cmake、git
 
+`cargo build --release`
 
 ### For linux before build
 

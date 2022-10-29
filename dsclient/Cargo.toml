@@ -16,3 +16,4 @@ dscom = {path = "../dscom"}
 
 zstd = "0.9"
 fltk = { version = "^1.3", git = "https://github.com/fltk-rs/fltk-rs" }
+rayon = "1.5"

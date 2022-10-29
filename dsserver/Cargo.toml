@@ -11,4 +11,4 @@ dscom = {path = "../dscom"}
 zstd = "0.9"
 scrap = "0.5"
 enigo = "0.0.14"
-
+rayon = "1.5"
