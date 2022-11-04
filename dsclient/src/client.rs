@@ -10,7 +10,8 @@ use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
-use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use fltk::app;
 use fltk::enums;
@@ -23,7 +24,6 @@ use fltk::prelude::WidgetExt;
 use rayon::prelude::*;
 
 use crate::bitmap;
-// use crate::util;
 
 pub fn app_run() {
     let app = app::App::default();
@@ -112,19 +112,18 @@ fn draw(host: String, pwd: String) {
 
     let dlen = (w * h * 3) as usize;
 
-    let (img_tx, img_rx) = mpsc::channel::<Vec<u8>>();
-    let (img_back_tx, img_back_rx) = mpsc::channel::<Vec<u8>>();
+    let work_buf = Arc::new(RwLock::new(vec![0u8; dlen]));
+    let draw_work_buf = work_buf.clone();
     frame.draw(move |f| {
-        if let Ok(data) = img_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+        if let Ok(_buf) = draw_work_buf.read() {
             unsafe {
                 if let Ok(mut image) =
-                    image::RgbImage::from_data2(&data, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+                    image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
                 {
                     image.scale(f.width(), f.height(), false, true);
                     image.draw(f.x(), f.y(), f.width(), f.height());
                 }
             }
-            img_back_tx.send(data).unwrap();
         }
     });
     let mut hooked = false;
@@ -248,33 +247,38 @@ fn draw(host: String, pwd: String) {
         }
         let mut data = Vec::<u8>::with_capacity(dlen);
         ctx.decompress(&mut data, &recv_buf[..recv_len]).unwrap();
-        // util::decompress(&recv_buf[..recv_len], &mut data);
-        img_tx.send(data).unwrap();
+        if let Ok(mut _buf) = work_buf.write() {
+            _buf.par_iter_mut()
+                .zip(data.par_iter())
+                .for_each(|(_d, d)| {
+                    *_d = *d;
+                });
+        }
         tx.send(Msg::Draw);
 
         loop {
-            if let Ok(mut data) = img_back_rx.recv() {
-                if let Err(_) = conn.read_exact(&mut header) {
-                    return;
-                }
-                let recv_len = depack(&header);
-                if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
-                    return;
-                }
-                unsafe {
-                    depres_data.set_len(0);
-                }
-                ctx.decompress(&mut depres_data, &recv_buf[..recv_len]).unwrap();
-                // util::decompress(&recv_buf[..recv_len], &mut depres_data);
-                data
-                    .par_iter_mut()
-                    .zip(depres_data.par_iter())
-                    .for_each(|(_d, d)| {
-                        *_d ^= *d;
-                    });
-                img_tx.send(data).unwrap();
-                tx.send(Msg::Draw);
+            if let Err(_) = conn.read_exact(&mut header) {
+                return;
             }
+            let recv_len = depack(&header);
+            if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
+                return;
+            }
+            unsafe {
+                depres_data.set_len(0);
+            }
+            ctx.decompress(&mut depres_data, &recv_buf[..recv_len])
+                .unwrap();
+            if let Ok(mut _buf) = work_buf.write() {
+                data.par_iter_mut()
+                    .zip(depres_data.par_iter())
+                    .zip(_buf.par_iter_mut())
+                    .for_each(|((_d, d), _dw)| {
+                        *_d ^= *d;
+                        *_dw = *_d;
+                    });
+            }
+            tx.send(Msg::Draw);
         }
     });
     while app::wait() {
