@@ -245,14 +245,11 @@ fn draw(host: String, pwd: String) {
             println!("error {}", e);
             return;
         }
-        let mut data = Vec::<u8>::with_capacity(dlen);
-        ctx.decompress(&mut data, &recv_buf[..recv_len]).unwrap();
         if let Ok(mut _buf) = work_buf.write() {
-            _buf.par_iter_mut()
-                .zip(data.par_iter())
-                .for_each(|(_d, d)| {
-                    *_d = *d;
-                });
+            unsafe {
+                _buf.set_len(0);
+            }
+            ctx.decompress(&mut *_buf, &recv_buf[..recv_len]).unwrap();
         }
         tx.send(Msg::Draw);
 
@@ -270,12 +267,10 @@ fn draw(host: String, pwd: String) {
             ctx.decompress(&mut depres_data, &recv_buf[..recv_len])
                 .unwrap();
             if let Ok(mut _buf) = work_buf.write() {
-                data.par_iter_mut()
+                _buf.par_iter_mut()
                     .zip(depres_data.par_iter())
-                    .zip(_buf.par_iter_mut())
-                    .for_each(|((_d, d), _dw)| {
+                    .for_each(|(_d, d)| {
                         *_d ^= *d;
-                        *_dw = *_d;
                     });
             }
             tx.send(Msg::Draw);
