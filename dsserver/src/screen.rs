@@ -2,7 +2,6 @@ use scrap::Capturer;
 use scrap::Display;
 use std::io::ErrorKind::WouldBlock;
 use std::time::Duration;
-use rayon::prelude::*;
 
 use crate::config;
 
@@ -72,7 +71,7 @@ impl Cap {
                     };
 
                     // 转换成rgb图像数组
-                    cap_buf.par_chunks_exact_mut(3).zip(buffer.par_chunks_exact(4)).for_each(|(c, b)|{
+                    cap_buf.chunks_exact_mut(3).zip(buffer.chunks_exact(4)).for_each(|(c, b)|{
                         c[0] = b[2] & config::BIT_MASK;
                         c[1] = b[1] & config::BIT_MASK;
                         c[2] = b[0] & config::BIT_MASK;

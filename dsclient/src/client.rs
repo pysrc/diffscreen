@@ -21,7 +21,6 @@ use fltk::prelude::GroupExt;
 use fltk::prelude::ImageExt;
 use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
-use rayon::prelude::*;
 
 use crate::bitmap;
 
@@ -267,8 +266,8 @@ fn draw(host: String, pwd: String) {
             ctx.decompress(&mut depres_data, &recv_buf[..recv_len])
                 .unwrap();
             if let Ok(mut _buf) = work_buf.write() {
-                _buf.par_iter_mut()
-                    .zip(depres_data.par_iter())
+                _buf.iter_mut()
+                    .zip(depres_data.iter())
                     .for_each(|(_d, d)| {
                         *_d ^= *d;
                     });

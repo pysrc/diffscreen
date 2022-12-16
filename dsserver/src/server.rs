@@ -12,7 +12,6 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
-use rayon::prelude::*;
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -221,7 +220,7 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            data1.par_iter_mut().zip(data2.par_iter()).for_each(|(d1, d2)|{
+            data1.iter_mut().zip(data2.iter()).for_each(|(d1, d2)|{
                 *d1 ^= *d2;
             });
             // 压缩
@@ -249,7 +248,7 @@ fn screen_stream(mut stream: TcpStream) {
                 continue;
             }
             // 做减法
-            data2.par_iter_mut().zip(data1.par_iter()).for_each(|(d2, d1)|{
+            data2.iter_mut().zip(data1.iter()).for_each(|(d2, d1)|{
                 *d2 ^= *d1;
             });
             // 压缩
