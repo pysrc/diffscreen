@@ -44,15 +44,20 @@ pub async fn run(port: u16) {
 
     while let Some(income_conn) = endpoint.accept().await {
         let new_conn = income_conn.await.unwrap();
-        if let Ok((wstream, rstream)) = new_conn.accept_bi().await {
-            let th1 = async {
+        match new_conn.accept_bi().await {
+            Ok((wstream, mut rstream)) => {
+                rstream.read(&mut [0u8]).await.unwrap();
+                tokio::spawn(async {
+                    event(rstream).await;
+                });
                 screen_stream(wstream).await;
-            };
-            let th2 = async {
-                event(rstream).await;
-            };
-            tokio::join!(th1, th2);
-            new_conn.close(0u32.into(), b"close");
+                new_conn.close(0u32.into(), b"close");
+                println!("Remote break !");
+            }
+            Err(e) => {
+                println!("{}", e);
+            }
+            
         }
     }
 }
@@ -97,6 +102,7 @@ async fn event(mut stream: RecvStream) {
                 enigo.mouse_scroll_y(2);
             }
             dscom::MOVE => {
+                println!("move");
                 stream.read_exact(&mut move_cmd).await.unwrap();
                 let x = ((move_cmd[0] as i32) << 8) | (move_cmd[1] as i32);
                 let y = ((move_cmd[2] as i32) << 8) | (move_cmd[3] as i32);
@@ -107,6 +113,7 @@ async fn event(mut stream: RecvStream) {
             }
         }
     }
+    println!("Read break !");
 }
 
 /**
@@ -151,6 +158,7 @@ async fn screen_stream(mut stream: SendStream) {
     meta[1] = w as u8;
     meta[2] = (h >> 8) as u8;
     meta[3] = h as u8;
+    println!("w {} h {}", w, h);
     if let Err(_) = stream.write_all(&meta).await {
         return;
     }

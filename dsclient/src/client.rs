@@ -48,16 +48,26 @@ pub async fn app_run() {
     let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
     host_ipt.set_value("127.0.0.1:80");
     let mut login_btn = Button::default().with_label("Login").with_pos(200, 80).with_size(80, 40);
+    // wind窗口结束绘制
+    wind.end();
+    wind.show();
     let host = host_ipt.value();
-    
+
+    let (tx, rx) = app::channel::<()>();
     login_btn.set_callback(move |_|{
-        let h = host.clone();
-        wind.hide();
-        tokio::spawn(async move {
-            draw(h).await;
-        });
+        tx.send(());
     });
-    app.run().unwrap();
+
+    while app.wait() {
+        match rx.recv() {
+            Some(()) => {
+                wind.hide();
+                let h = host.clone();
+                draw(h).await;
+            }
+            _ => {}
+        }
+    }
 }
 
 enum Msg {
@@ -91,24 +101,19 @@ async fn draw(host: String) {
         endpoint
     };
     let server_addr = SocketAddr::from_str(host.as_str()).unwrap();
-    let new_conn = match endpoint.connect(server_addr, "diffscreen") {
-        Ok (c) => {
-            match c.await {
-                Ok(cc) => cc,
-                Err(_) => {
-                    return;
-                }
-            }
-        }
-        Err(_) => {
-            return;
-        }
-    };
+    let new_conn = endpoint.connect(server_addr, "diffscreen").unwrap().await.unwrap();
 
-    let (wstream, mut rstream) = match new_conn.open_bi().await {
-        Ok((wstream, rstream)) => (wstream, rstream),
-        Err(_) => return
-    };
+    let (mut wstream, mut rstream) = new_conn.open_bi().await.unwrap();
+
+    wstream.write(&[1u8]).await.unwrap();
+
+    // 接收meta信息
+    let mut meta = [0u8; 4];
+    if let Err(_) = rstream.read_exact(&mut meta).await {
+        return;
+    }
+    let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
+    let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
     // 开始绘制wind2窗口
     let (sw, sh) = app::screen_size();
@@ -119,14 +124,6 @@ async fn draw(host: String) {
     wind_screen.make_resizable(true);
     wind_screen.end();
     wind_screen.show();
-
-    // 接收meta信息
-    let mut meta = [0u8; 4];
-    if let Err(_) = rstream.read_exact(&mut meta).await {
-        return;
-    }
-    let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
-    let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
     let dlen = (w * h * 3) as usize;
 
@@ -147,8 +144,6 @@ async fn draw(host: String) {
     let hooked = Arc::new(Mutex::new(AtomicBool::new(false)));
     let abmap = Arc::new(Mutex::new(bitmap::Bitmap::new()));
     let mut cmd_buf = [0u8; 5];
-    
-    // let (tcmd, rcmd) = app::channel::<[u8; 6]>();
     
     let awstream = Arc::new(Mutex::new(wstream));
     frame.handle(move |ff, ev| {
@@ -205,7 +200,6 @@ async fn draw(host: String) {
                     cmd_buf[3] = (rely >> 8) as u8;
                     cmd_buf[4] = rely as u8;
                     a2wstream.lock().await.write_all(&cmd_buf).await.unwrap();
-                    
                 }
                 Event::Push if hk.lock().await.load(Ordering::Relaxed) => {
                     // 鼠标按下
@@ -258,7 +252,7 @@ async fn draw(host: String) {
                     }
                 }
             }
-        }).abort();
+        });
         
         true
     });
@@ -311,6 +305,7 @@ async fn draw(host: String) {
                     });
             }
             tx.send(Msg::Draw);
+            app::awake();
         }
     });
     while app::wait() {
