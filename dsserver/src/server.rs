@@ -102,7 +102,6 @@ async fn event(mut stream: RecvStream) {
                 enigo.mouse_scroll_y(2);
             }
             dscom::MOVE => {
-                println!("move");
                 stream.read_exact(&mut move_cmd).await.unwrap();
                 let x = ((move_cmd[0] as i32) << 8) | (move_cmd[1] as i32);
                 let y = ((move_cmd[2] as i32) << 8) | (move_cmd[3] as i32);
@@ -158,7 +157,6 @@ async fn screen_stream(mut stream: SendStream) {
     meta[1] = w as u8;
     meta[2] = (h >> 8) as u8;
     meta[3] = h as u8;
-    println!("w {} h {}", w, h);
     if let Err(_) = stream.write_all(&meta).await {
         return;
     }
