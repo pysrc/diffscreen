@@ -51,7 +51,6 @@ pub async fn app_run() {
     // wind窗口结束绘制
     wind.end();
     wind.show();
-    let host = host_ipt.value();
 
     let (tx, rx) = app::channel::<()>();
     login_btn.set_callback(move |_|{
@@ -62,8 +61,8 @@ pub async fn app_run() {
         match rx.recv() {
             Some(()) => {
                 wind.hide();
-                let h = host.clone();
-                draw(h).await;
+                let host = host_ipt.value();
+                draw(host).await;
             }
             _ => {}
         }
