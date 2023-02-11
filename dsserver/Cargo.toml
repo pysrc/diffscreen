@@ -12,3 +12,9 @@ zstd = "0.11"
 scrap = "0.5"
 enigo = "0.0.14"
 rayon = "1.5"
+
+
+tokio = { version = "1.25.0", features = ["macros", "rt", "rt-multi-thread", "fs", "io-util"] }
+quinn = "0.9.3"
+rustls = { version = "0.20.6", features = ["quic"] }
+rustls-pemfile = "1.0.2"

@@ -2,16 +2,22 @@ use fltk::button::Button;
 use fltk::enums::Color;
 use fltk::frame::Frame;
 use fltk::input::Input;
-use fltk::input::SecretInput;
 use fltk::prelude::InputExt;
 use fltk::window::Window;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hasher;
-use std::io::Read;
-use std::io::Write;
-use std::net::TcpStream;
+use quinn::ClientConfig;
+use quinn::Endpoint;
+use tokio::sync::Mutex;
+use std::fs::File;
+use std::io::BufReader;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use fltk::app;
 use fltk::enums;
@@ -25,7 +31,9 @@ use rayon::prelude::*;
 
 use crate::bitmap;
 
-pub fn app_run() {
+
+#[tokio::main]
+pub async fn app_run() {
     let app = app::App::default();
     let (sw, sh) = app::screen_size();
     // 开始绘制wind窗口
@@ -39,16 +47,15 @@ pub fn app_run() {
     wind.set_color(Color::from_rgb(255, 255, 255));
     let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
     host_ipt.set_value("127.0.0.1:80");
-    let mut pwd_ipt = SecretInput::new(80, 50, 200, 25, "PASS:");
-    pwd_ipt.set_value("diffscreen");
-    let mut login_btn = Button::new(200, 80, 80, 40, "Login");
-    // wind窗口结束绘制
-    wind.end();
-    wind.show();
-
-    login_btn.set_callback(move |_| {
+    let mut login_btn = Button::default().with_label("Login").with_pos(200, 80).with_size(80, 40);
+    let host = host_ipt.value();
+    
+    login_btn.set_callback(move |_|{
+        let h = host.clone();
         wind.hide();
-        draw(host_ipt.value(), pwd_ipt.value());
+        tokio::spawn(async move {
+            draw(h).await;
+        });
     });
     app.run().unwrap();
 }
@@ -63,32 +70,45 @@ fn depack(buffer: &[u8]) -> usize {
     ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
 }
 
-fn draw(host: String, pwd: String) {
-    let mut conn = TcpStream::connect(host).unwrap();
-    // 认证
-    let mut hasher = DefaultHasher::new();
-    hasher.write(pwd.as_bytes());
-    let pk = hasher.finish();
-    conn.write_all(&[
-        (pk >> (7 * 8)) as u8,
-        (pk >> (6 * 8)) as u8,
-        (pk >> (5 * 8)) as u8,
-        (pk >> (4 * 8)) as u8,
-        (pk >> (3 * 8)) as u8,
-        (pk >> (2 * 8)) as u8,
-        (pk >> (1 * 8)) as u8,
-        pk as u8,
-    ])
-    .unwrap();
-    let mut suc = [0u8];
-    conn.read_exact(&mut suc).unwrap();
-    if suc[0] != 1 {
-        if suc[0] == 2 {
-            panic!("Password error !");
-        } else {
-            panic!("Some error !");
+async fn draw(host: String) {
+
+    let cert = "cert.pem";
+    let file = File::open(Path::new(cert))
+            .expect(format!("cannot open {}", cert).as_str());
+    let mut br = BufReader::new(file);
+    let cetrs = rustls_pemfile::certs(&mut br).unwrap();
+
+    let certificate = rustls::Certificate(cetrs[0].clone());
+    let mut certs = rustls::RootCertStore::empty();
+    certs.add(&certificate).unwrap();
+
+    let client_config = ClientConfig::with_root_certificates(certs);
+
+    let endpoint = {
+        let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
+        let mut endpoint = Endpoint::client(bind_addr).unwrap();
+        endpoint.set_default_client_config(client_config);
+        endpoint
+    };
+    let server_addr = SocketAddr::from_str(host.as_str()).unwrap();
+    let new_conn = match endpoint.connect(server_addr, "diffscreen") {
+        Ok (c) => {
+            match c.await {
+                Ok(cc) => cc,
+                Err(_) => {
+                    return;
+                }
+            }
         }
-    }
+        Err(_) => {
+            return;
+        }
+    };
+
+    let (wstream, mut rstream) = match new_conn.open_bi().await {
+        Ok((wstream, rstream)) => (wstream, rstream),
+        Err(_) => return
+    };
 
     // 开始绘制wind2窗口
     let (sw, sh) = app::screen_size();
@@ -100,11 +120,9 @@ fn draw(host: String, pwd: String) {
     wind_screen.end();
     wind_screen.show();
 
-    // 发送指令socket
-    let mut txc = conn.try_clone().unwrap();
     // 接收meta信息
     let mut meta = [0u8; 4];
-    if let Err(_) = conn.read_exact(&mut meta) {
+    if let Err(_) = rstream.read_exact(&mut meta).await {
         return;
     }
     let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
@@ -126,109 +144,128 @@ fn draw(host: String, pwd: String) {
             }
         }
     });
-    let mut hooked = false;
-    let mut bmap = bitmap::Bitmap::new();
+    let hooked = Arc::new(Mutex::new(AtomicBool::new(false)));
+    let abmap = Arc::new(Mutex::new(bitmap::Bitmap::new()));
     let mut cmd_buf = [0u8; 5];
-    frame.handle(move |f, ev| {
-        match ev {
-            Event::Enter => {
-                // 进入窗口
-                hooked = true;
-            }
-            Event::Leave => {
-                // 离开窗口
-                hooked = false;
-            }
-            Event::KeyDown if hooked => {
-                // 按键按下
-                let key = app::event_key().bits() as u8;
-                cmd_buf[0] = dscom::KEY_DOWN;
-                cmd_buf[1] = key;
-                if bmap.push(key) {
-                    txc.write_all(&cmd_buf[..2]).unwrap();
+    
+    // let (tcmd, rcmd) = app::channel::<[u8; 6]>();
+    
+    let awstream = Arc::new(Mutex::new(wstream));
+    frame.handle(move |ff, ev| {
+        let e = ev.clone();
+        let f = ff.clone();
+        let bmap = abmap.clone();
+        let a2wstream = awstream.clone();
+        let hk = hooked.clone();
+        tokio::spawn(async move {
+            match e {
+                Event::Enter => {
+                    // 进入窗口
+                    hk.lock().await.store(true, Ordering::Relaxed);
                 }
-            }
-            Event::Shortcut if hooked => {
-                // 按键按下
-                let key = app::event_key().bits() as u8;
-                cmd_buf[0] = dscom::KEY_DOWN;
-                cmd_buf[1] = key;
-                if bmap.push(key) {
-                    txc.write_all(&cmd_buf[..2]).unwrap();
+                Event::Leave => {
+                    // 离开窗口
+                    hk.lock().await.store(false, Ordering::Relaxed);
                 }
-            }
-            Event::KeyUp if hooked => {
-                // 按键放开
-                let key = app::event_key().bits() as u8;
-                bmap.remove(key);
-                cmd_buf[0] = dscom::KEY_UP;
-                cmd_buf[1] = key;
-                txc.write_all(&cmd_buf[..2]).unwrap();
-            }
-            Event::Move if hooked => {
-                // 鼠标移动
-                let relx = (w * app::event_x() / f.width()) as u16;
-                let rely = (h * app::event_y() / f.height()) as u16;
-                // MOVE xu xd yu yd
-                cmd_buf[0] = dscom::MOVE;
-                cmd_buf[1] = (relx >> 8) as u8;
-                cmd_buf[2] = relx as u8;
-                cmd_buf[3] = (rely >> 8) as u8;
-                cmd_buf[4] = rely as u8;
-                txc.write_all(&cmd_buf).unwrap();
-            }
-            Event::Push if hooked => {
-                // 鼠标按下
-                cmd_buf[0] = dscom::MOUSE_KEY_DOWN;
-                cmd_buf[1] = app::event_key().bits() as u8;
-                txc.write_all(&cmd_buf[..2]).unwrap();
-            }
-            Event::Released if hooked => {
-                // 鼠标释放
-                cmd_buf[0] = dscom::MOUSE_KEY_UP;
-                cmd_buf[1] = app::event_key().bits() as u8;
-                txc.write_all(&cmd_buf[..2]).unwrap();
-            }
-            Event::Drag if hooked => {
-                // 鼠标按下移动
-                let relx = (w * app::event_x() / f.width()) as u16;
-                let rely = (h * app::event_y() / f.height()) as u16;
-                // MOVE xu xd yu yd
-                cmd_buf[0] = dscom::MOVE;
-                cmd_buf[1] = (relx >> 8) as u8;
-                cmd_buf[2] = relx as u8;
-                cmd_buf[3] = (rely >> 8) as u8;
-                cmd_buf[4] = rely as u8;
-                txc.write_all(&cmd_buf).unwrap();
-            }
-            Event::MouseWheel if hooked => {
-                // app::MouseWheel::Down;
-                match app::event_dy() {
-                    app::MouseWheel::Down => {
-                        // 滚轮下滚
-                        cmd_buf[0] = dscom::MOUSE_WHEEL_DOWN;
-                        txc.write_all(&cmd_buf[..1]).unwrap();
+                Event::KeyDown if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 按键按下
+                    let key = app::event_key().bits() as u8;
+                    cmd_buf[0] = dscom::KEY_DOWN;
+                    cmd_buf[1] = key;
+                    let mut bm = bmap.lock().await;
+                    bm.push(key);
+                    a2wstream.lock().await.write_all(&cmd_buf[..2 as usize]).await.unwrap();
+                }
+                Event::Shortcut if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 按键按下
+                    let key = app::event_key().bits() as u8;
+                    cmd_buf[0] = dscom::KEY_DOWN;
+                    cmd_buf[1] = key;
+                    let mut bm = bmap.lock().await;
+                    bm.push(key);
+                    a2wstream.lock().await.write_all(&cmd_buf[..2 as usize]).await.unwrap();
+                }
+                Event::KeyUp if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 按键放开
+                    let key = app::event_key().bits() as u8;
+                    cmd_buf[0] = dscom::KEY_UP;
+                    cmd_buf[1] = key;
+                    let mut bm = bmap.lock().await;
+                    bm.remove(key);
+                    a2wstream.lock().await.write_all(&cmd_buf[..2 as usize]).await.unwrap();
+                }
+                Event::Move if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 鼠标移动
+                    let relx = (w * app::event_x() / f.width()) as u16;
+                    let rely = (h * app::event_y() / f.height()) as u16;
+                    // MOVE xu xd yu yd
+                    cmd_buf[0] = dscom::MOVE;
+                    cmd_buf[1] = (relx >> 8) as u8;
+                    cmd_buf[2] = relx as u8;
+                    cmd_buf[3] = (rely >> 8) as u8;
+                    cmd_buf[4] = rely as u8;
+                    a2wstream.lock().await.write_all(&cmd_buf).await.unwrap();
+                    
+                }
+                Event::Push if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 鼠标按下
+                    cmd_buf[0] = dscom::MOUSE_KEY_DOWN;
+                    cmd_buf[1] = app::event_key().bits() as u8;
+                    a2wstream.lock().await.write_all(&cmd_buf[..2 as usize]).await.unwrap();
+                    
+                }
+                Event::Released if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 鼠标释放
+                    cmd_buf[0] = dscom::MOUSE_KEY_UP;
+                    cmd_buf[1] = app::event_key().bits() as u8;
+                    a2wstream.lock().await.write_all(&cmd_buf[..2 as usize]).await.unwrap();
+                    
+                }
+                Event::Drag if hk.lock().await.load(Ordering::Relaxed) => {
+                    // 鼠标按下移动
+                    let relx = (w * app::event_x() / f.width()) as u16;
+                    let rely = (h * app::event_y() / f.height()) as u16;
+                    // MOVE xu xd yu yd
+                    cmd_buf[0] = dscom::MOVE;
+                    cmd_buf[1] = (relx >> 8) as u8;
+                    cmd_buf[2] = relx as u8;
+                    cmd_buf[3] = (rely >> 8) as u8;
+                    cmd_buf[4] = rely as u8;
+                    a2wstream.lock().await.write_all(&cmd_buf).await.unwrap();
+                    
+                }
+                Event::MouseWheel if hk.lock().await.load(Ordering::Relaxed) => {
+                    // app::MouseWheel::Down;
+                    match app::event_dy() {
+                        app::MouseWheel::Down => {
+                            // 滚轮下滚
+                            cmd_buf[0] = dscom::MOUSE_WHEEL_DOWN;
+                            a2wstream.lock().await.write_all(&cmd_buf[..1]).await.unwrap();
+                            
+                        }
+                        app::MouseWheel::Up => {
+                            // 滚轮上滚
+                            cmd_buf[0] = dscom::MOUSE_WHEEL_UP;
+                            a2wstream.lock().await.write_all(&cmd_buf[..1]).await.unwrap();
+                            
+                        }
+                        _ => {}
                     }
-                    app::MouseWheel::Up => {
-                        // 滚轮上滚
-                        cmd_buf[0] = dscom::MOUSE_WHEEL_UP;
-                        txc.write_all(&cmd_buf[..1]).unwrap();
+                }
+                _ => {
+                    if hk.lock().await.load(Ordering::Relaxed) {
+                        println!("{}", ev);
                     }
-                    _ => {}
                 }
             }
-            _ => {
-                if hooked {
-                    println!("{}", ev);
-                }
-            }
-        }
+        }).abort();
+        
         true
     });
 
     let (tx, rx) = app::channel::<Msg>();
 
-    std::thread::spawn(move || {
+    tokio::spawn(async move {
         let mut ctx = zstd::zstd_safe::DCtx::create();
         let mut recv_buf = Vec::<u8>::with_capacity(dlen);
         unsafe {
@@ -237,11 +274,11 @@ fn draw(host: String, pwd: String) {
         let mut depres_data = Vec::<u8>::with_capacity(dlen);
         // 接收第一帧数据
         let mut header = [0u8; 3];
-        if let Err(_) = conn.read_exact(&mut header) {
+        if let Err(_) = rstream.read_exact(&mut header).await {
             return;
         }
         let recv_len = depack(&header);
-        if let Err(e) = conn.read_exact(&mut recv_buf[..recv_len]) {
+        if let Err(e) = rstream.read_exact(&mut recv_buf[..recv_len]).await {
             println!("error {}", e);
             return;
         }
@@ -254,11 +291,11 @@ fn draw(host: String, pwd: String) {
         tx.send(Msg::Draw);
 
         loop {
-            if let Err(_) = conn.read_exact(&mut header) {
+            if let Err(_) = rstream.read_exact(&mut header).await {
                 return;
             }
             let recv_len = depack(&header);
-            if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
+            if let Err(_) = rstream.read_exact(&mut recv_buf[..recv_len]).await {
                 return;
             }
             unsafe {
@@ -284,4 +321,5 @@ fn draw(host: String, pwd: String) {
             _ => {}
         }
     }
+    endpoint.close(0u32.into(), b"close");
 }
