@@ -46,7 +46,7 @@ pub async fn app_run() {
     );
     wind.set_color(Color::from_rgb(255, 255, 255));
     let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
-    host_ipt.set_value("127.0.0.1:80");
+    host_ipt.set_value("127.0.0.1:9980");
     let mut login_btn = Button::default().with_label("Login").with_pos(200, 80).with_size(80, 40);
     // wind窗口结束绘制
     wind.end();
