@@ -1,6 +1,6 @@
 use crate::config::COMPRESS_LEVEL;
 use crate::key_mouse;
-use crate::screen::Cap;
+use crate::screenshot::Screen;
 use crate::util;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
@@ -139,9 +139,9 @@ data: 数据
 */
 async fn screen_stream(mut stream: SendStream) {
     let mut ctx = zstd::zstd_safe::CCtx::create();
-    let mut cap = Cap::new();
+    let mut screen = Screen::new();
 
-    let (w, h) = cap.wh();
+    let (w, h) = (screen.width as usize, screen.height as usize);
     let dlen = w * h * 3;
     let mut data2 = Vec::<u8>::with_capacity(dlen);
     let mut data1 = Vec::<u8>::with_capacity(dlen);
@@ -164,7 +164,7 @@ async fn screen_stream(mut stream: SendStream) {
     let mut header = [0u8; 3];
 
     // 截第一张图
-    cap.cap(&mut data1);
+    data1 = screen.capture(data1).unwrap();
     unsafe {
         pres_data.set_len(0);
     }
@@ -181,7 +181,7 @@ async fn screen_stream(mut stream: SendStream) {
     loop {
         loop {
             // 截图
-            cap.cap(&mut data2);
+            data2 = screen.capture(data2).unwrap();
             if data2 == data1 {
                 continue;
             }
@@ -209,7 +209,7 @@ async fn screen_stream(mut stream: SendStream) {
 
         loop {
             // 截图
-            cap.cap(&mut data1);
+            data1 = screen.capture(data1).unwrap();
             if data1 == data2 {
                 continue;
             }

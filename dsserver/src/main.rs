@@ -1,8 +1,9 @@
 mod key_mouse;
-mod screen;
+// mod screen;
 mod server;
 mod config;
 mod util;
+mod screenshot;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     // defalut port
