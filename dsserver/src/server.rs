@@ -203,7 +203,7 @@ async fn screen_stream(mut stream: SendStream) {
             if let Err(_) = stream.write_all(&pres_data).await {
                 return;
             }
-            util::skip(clen);
+            util::skip(clen).await;
             break;
         }
 
@@ -231,7 +231,7 @@ async fn screen_stream(mut stream: SendStream) {
             if let Err(_) = stream.write_all(&pres_data[..clen]).await {
                 return;
             }
-            util::skip(clen);
+            util::skip(clen).await;
             break;
         }
     }

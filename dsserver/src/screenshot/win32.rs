@@ -253,19 +253,17 @@ impl Screen {
         // 旋转图像,图像数据是倒置的
         let mut i = 0usize;
         let mut j = self.bgra.len();
+        let wd = self.width * 4;
         loop {
-            let k = i;
-            let e = j - (self.width as usize * 4);
-            for s in 0..self.width * 4 {
-                let k1 = k + s as usize;
-                let e1 = e + s as usize;
-                let t = self.bgra[k1];
-                self.bgra[k1] = self.bgra[e1];
-                self.bgra[e1] = t;
+            let mut e = j - wd as usize;
+            for _ in 0..wd {
+                let t = self.bgra[i];
+                self.bgra[i] = self.bgra[e];
+                self.bgra[e] = t;
+                i += 1;
+                e += 1;
             }
-            i += self.width as usize * 4;
-            j -= self.width as usize * 4;
-
+            j -= wd as usize;
             if j <= i {
                 break;
             }
