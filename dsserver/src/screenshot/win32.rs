@@ -113,13 +113,52 @@ extern "system" fn monitor_enum_proc(
         state.push(monitor_info_exw);
         BOOL::from(true)
     }
+}           
+
+struct DropDC(CreatedHDC);
+impl Deref for DropDC {
+    type Target = CreatedHDC;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-pub struct Screen {
-    monitor_info_exw: MONITORINFOEXW,
+impl Drop for DropDC {
+    fn drop(&mut self) {
+        unsafe{
+            DeleteDC(self.0)
+        };
+    }
+}
+
+struct DropHBITMAP(HBITMAP);
+impl Deref for DropHBITMAP {
+    type Target = HBITMAP;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for DropHBITMAP {
+    fn drop(&mut self) {
+        unsafe{
+            DeleteObject(self.0)
+        };
+    }
+}
+
+pub struct Screen
+{
     bgra: Vec<u8>,
     pub width: i32,
     pub height: i32,
+    bitmap: BITMAP,
+    dcw_drop_box: DropDC,
+    compatible_dc_drop_box: DropDC,
+    h_bitmap_drop_box: DropHBITMAP,
+    bitmap_info: BITMAPINFO
 }
 
 impl Screen {
@@ -149,70 +188,27 @@ impl Screen {
         );
 
         let monitor_info_exw = h_monitors.remove(0);
-
-        Screen {
-            monitor_info_exw,
-            bgra: vec![0u8; (width * height) as usize * 4],
-            width,
-            height,
-        }
-    }
-    pub fn capture(&mut self, mut rgb: Vec<u8>) -> Result<Vec<u8>, &str> {
-        let buf_prt = self.bgra.as_ptr() as *mut _;
-        let sz_device_ptr = self.monitor_info_exw.szDevice.as_ptr();
-
-        let dcw_drop_box = drop_box!(
-            CreatedHDC,
-            unsafe {
-                CreateDCW(
-                    PCWSTR(sz_device_ptr),
-                    PCWSTR(sz_device_ptr),
-                    PCWSTR(ptr::null()),
-                    None,
-                )
-            },
-            |dcw| unsafe { DeleteDC(dcw) }
-        );
-
-        let compatible_dc_drop_box = drop_box!(
-            CreatedHDC,
-            unsafe { CreateCompatibleDC(*dcw_drop_box) },
-            |compatible_dc| unsafe { DeleteDC(compatible_dc) }
-        );
-
-        let h_bitmap_drop_box = drop_box!(
-            HBITMAP,
-            unsafe { CreateCompatibleBitmap(*dcw_drop_box, self.width, self.height) },
-            |h_bitmap| unsafe { DeleteObject(h_bitmap) }
-        );
-
+        let sz_device_ptr = monitor_info_exw.szDevice.as_ptr();
+        let dcw_drop_box = DropDC(unsafe {
+            CreateDCW(
+                PCWSTR(sz_device_ptr),
+                PCWSTR(sz_device_ptr),
+                PCWSTR(ptr::null()),
+                None,
+            )
+        });
+        let compatible_dc_drop_box = DropDC(unsafe { CreateCompatibleDC(*dcw_drop_box) });
+        let h_bitmap_drop_box = DropHBITMAP(unsafe { CreateCompatibleBitmap(*dcw_drop_box, width, height) });
         unsafe {
             SelectObject(*compatible_dc_drop_box, *h_bitmap_drop_box);
             SetStretchBltMode(*dcw_drop_box, STRETCH_HALFTONE);
         };
 
-        unsafe {
-            StretchBlt(
-                *compatible_dc_drop_box,
-                0,
-                0,
-                self.width,
-                self.height,
-                *dcw_drop_box,
-                0,
-                0,
-                self.width,
-                self.height,
-                SRCCOPY,
-            )
-            .ok()
-            .unwrap();
-        };
-        let mut bitmap_info = BITMAPINFO {
+        let bitmap_info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: self.width as i32,
-                biHeight: self.height as i32, // 这里可以传递负数, 但是不知道为什么会报错
+                biWidth: width as i32,
+                biHeight: height as i32, // 这里可以传递负数, 但是不知道为什么会报错
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB,
@@ -224,15 +220,45 @@ impl Screen {
             },
             bmiColors: [RGBQUAD::default(); 1],
         };
-        let mut bitmap = BITMAP::default();
+
+        Screen {
+            bgra: vec![0u8; (width * height) as usize * 4],
+            width,
+            height,
+            bitmap: BITMAP::default(),
+            dcw_drop_box,
+            compatible_dc_drop_box,
+            h_bitmap_drop_box,
+            bitmap_info
+        }
+    }
+    pub fn capture(&mut self, mut rgb: Vec<u8>) -> Result<Vec<u8>, &str> {
+        let buf_prt = self.bgra.as_ptr() as *mut _;
+        unsafe {
+            StretchBlt(
+                *self.compatible_dc_drop_box,
+                0,
+                0,
+                self.width,
+                self.height,
+                *self.dcw_drop_box,
+                0,
+                0,
+                self.width,
+                self.height,
+                SRCCOPY,
+            )
+            .ok()
+            .unwrap();
+        };
         let is_success = unsafe {
             GetDIBits(
-                *compatible_dc_drop_box,
-                *h_bitmap_drop_box,
+                *self.compatible_dc_drop_box,
+                *self.h_bitmap_drop_box,
                 0,
                 self.height as u32,
                 Some(buf_prt),
-                &mut bitmap_info,
+                &mut self.bitmap_info,
                 DIB_RGB_COLORS,
             ) == 0
         };
@@ -240,11 +266,11 @@ impl Screen {
             return Err("Get bgra data failed");
         }
 
-        let bitmap_ptr = <*mut _>::cast(&mut bitmap);
+        let bitmap_ptr = <*mut _>::cast(&mut self.bitmap);
 
         unsafe {
             GetObjectW(
-                *h_bitmap_drop_box,
+                *self.h_bitmap_drop_box,
                 mem::size_of::<BITMAP>() as i32,
                 Some(bitmap_ptr),
             );
