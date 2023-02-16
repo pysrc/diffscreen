@@ -18,43 +18,44 @@ use windows::{
     },
 };
 
-// 自动释放资源
-macro_rules! drop_box {
-    ($type:tt, $value:expr, $drop:expr) => {{
-        struct DropBox($type);
+struct DropDC(CreatedHDC);
+impl Deref for DropDC {
+    type Target = CreatedHDC;
 
-        impl Deref for DropBox {
-            type Target = $type;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Drop for DropDC {
+    fn drop(&mut self) {
+        unsafe { DeleteDC(self.0) };
+    }
+}
 
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
+struct DropHBITMAP(HBITMAP);
+impl Deref for DropHBITMAP {
+    type Target = HBITMAP;
 
-        impl Drop for DropBox {
-            fn drop(&mut self) {
-                $drop(self.0);
-            }
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
-        DropBox($value)
-    }};
+impl Drop for DropHBITMAP {
+    fn drop(&mut self) {
+        unsafe { DeleteObject(self.0) };
+    }
 }
 
 fn get_scale_factor(sz_device: *const u16) -> f32 {
-    let dcw_drop_box = drop_box!(
-        CreatedHDC,
-        unsafe {
-            CreateDCW(
-                PCWSTR(sz_device),
-                PCWSTR(sz_device),
-                PCWSTR(ptr::null()),
-                None,
-            )
-        },
-        |dcw| unsafe { DeleteDC(dcw) }
-    );
-
+    let dcw_drop_box = DropDC(unsafe {
+        CreateDCW(
+            PCWSTR(sz_device),
+            PCWSTR(sz_device),
+            PCWSTR(ptr::null()),
+            None,
+        )
+    });
     let logical_width = unsafe { GetDeviceCaps(*dcw_drop_box, HORZRES) };
     let physical_width = unsafe { GetDeviceCaps(*dcw_drop_box, DESKTOPHORZRES) };
 
@@ -113,44 +114,9 @@ extern "system" fn monitor_enum_proc(
         state.push(monitor_info_exw);
         BOOL::from(true)
     }
-}           
-
-struct DropDC(CreatedHDC);
-impl Deref for DropDC {
-    type Target = CreatedHDC;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
-impl Drop for DropDC {
-    fn drop(&mut self) {
-        unsafe{
-            DeleteDC(self.0)
-        };
-    }
-}
-
-struct DropHBITMAP(HBITMAP);
-impl Deref for DropHBITMAP {
-    type Target = HBITMAP;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Drop for DropHBITMAP {
-    fn drop(&mut self) {
-        unsafe{
-            DeleteObject(self.0)
-        };
-    }
-}
-
-pub struct Screen
-{
+pub struct Screen {
     bgra: Vec<u8>,
     pub width: i32,
     pub height: i32,
@@ -158,7 +124,7 @@ pub struct Screen
     dcw_drop_box: DropDC,
     compatible_dc_drop_box: DropDC,
     h_bitmap_drop_box: DropHBITMAP,
-    bitmap_info: BITMAPINFO
+    bitmap_info: BITMAPINFO,
 }
 
 impl Screen {
@@ -198,7 +164,8 @@ impl Screen {
             )
         });
         let compatible_dc_drop_box = DropDC(unsafe { CreateCompatibleDC(*dcw_drop_box) });
-        let h_bitmap_drop_box = DropHBITMAP(unsafe { CreateCompatibleBitmap(*dcw_drop_box, width, height) });
+        let h_bitmap_drop_box =
+            DropHBITMAP(unsafe { CreateCompatibleBitmap(*dcw_drop_box, width, height) });
         unsafe {
             SelectObject(*compatible_dc_drop_box, *h_bitmap_drop_box);
             SetStretchBltMode(*dcw_drop_box, STRETCH_HALFTONE);
@@ -229,7 +196,7 @@ impl Screen {
             dcw_drop_box,
             compatible_dc_drop_box,
             h_bitmap_drop_box,
-            bitmap_info
+            bitmap_info,
         }
     }
     pub fn capture(&mut self, mut rgb: Vec<u8>) -> Result<Vec<u8>, &str> {
