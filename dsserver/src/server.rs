@@ -1,10 +1,10 @@
-use crate::config::COMPRESS_LEVEL;
 use crate::key_mouse;
 use crate::screen::Cap;
-use crate::util;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -13,6 +13,32 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
 use rayon::prelude::*;
+
+struct DefEncoder {
+    encoder: ZlibEncoder<Vec<u8>>
+}
+
+impl DefEncoder {
+    fn new(mut swap: Vec<u8>) -> Self {
+        unsafe {
+            swap.set_len(0);
+        }
+        Self {
+            encoder: ZlibEncoder::new(swap, Compression::default()),
+        }   
+    }
+    fn write_all(&mut self, buf: &[u8]) {
+        self.encoder.write_all(buf).unwrap();
+    }
+    fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
+        unsafe {
+            swap.set_len(0);
+        }
+        let s = self.encoder.reset(swap).unwrap();
+        return s;
+    }
+
+}
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -160,6 +186,29 @@ fn encode(data_len: usize, res: &mut [u8]) {
     res[2] = data_len as u8;
 }
 
+
+/*
+a: 老图像
+b: 新图像
+return: 老图像, 待发送图像
+ */
+fn cap_and_swap(mut enzip: DefEncoder, mut cap: Cap, mut a: Vec<u8>, mut b: Vec<u8>) -> (DefEncoder, Cap, Vec<u8>, Vec<u8>) {
+    loop {
+        cap.cap(&mut b);
+        if a == b {
+            continue;
+        }
+        // 计算差异
+        a.par_iter_mut().zip(b.par_iter()).for_each(|(d1, d2)|{
+            *d1 ^= *d2;
+        });
+        // 压缩
+        enzip.write_all(&mut a);
+        let c = enzip.read(a);
+        return (enzip, cap, b, c);
+    }
+}
+
 /*
 图像字节序
 +------------+
@@ -173,18 +222,14 @@ length: 数据长度
 data: 数据
 */
 fn screen_stream(mut stream: TcpStream) {
-    let mut ctx = zstd::zstd_safe::CCtx::create();
     let mut cap = Cap::new();
 
     let (w, h) = cap.wh();
     let dlen = w * h * 3;
-    let mut data2 = Vec::<u8>::with_capacity(dlen);
-    let mut data1 = Vec::<u8>::with_capacity(dlen);
-    let mut pres_data = Vec::<u8>::with_capacity(dlen);
-    unsafe {
-        data2.set_len(dlen);
-        data1.set_len(dlen);
-    }
+    let mut a = Vec::<u8>::with_capacity(dlen);
+    let b: Vec<u8> = Vec::<u8>::with_capacity(dlen);
+    let c = Vec::<u8>::with_capacity(dlen);
+    let mut enzip = DefEncoder::new(c);
 
     // 发送w, h
     let mut meta = [0u8; 4];
@@ -195,79 +240,35 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&meta) {
         return;
     }
-
     let mut header = [0u8; 3];
-
-    // 截第一张图
-    cap.cap(&mut data1);
+    // 第一帧
     unsafe {
-        pres_data.set_len(0);
+        a.set_len(dlen);
     }
-    let clen = ctx.compress(&mut pres_data, &data1, COMPRESS_LEVEL).unwrap();
-    // let clen = util::compress(&data1, &mut pres_data);
+    cap.cap(&mut a);
+    // 压缩
+    enzip.write_all(&a);
+    let mut b = enzip.read(b);
+    let clen = b.len();
     encode(clen, &mut header);
     if let Err(_) = stream.write_all(&header) {
         return;
     }
-    if let Err(_) = stream.write_all(&pres_data) {
+    if let Err(_) = stream.write_all(&b) {
         return;
     }
-    // let dura = 1000 / config::FPS;
     loop {
-        loop {
-            // 截图
-            cap.cap(&mut data2);
-            if data2 == data1 {
-                continue;
-            }
-            // 做减法
-            data1.par_iter_mut().zip(data2.par_iter()).for_each(|(d1, d2)|{
-                *d1 ^= *d2;
-            });
-            // 压缩
-            unsafe {
-                pres_data.set_len(0);
-            }
-            let clen = ctx.compress(&mut pres_data, &data1, COMPRESS_LEVEL).unwrap();
-            // let clen = util::compress(&data1, &mut pres_data);
-            // 发送diff
-            encode(clen, &mut header);
-            if let Err(_) = stream.write_all(&header) {
-                return;
-            }
-            if let Err(_) = stream.write_all(&pres_data) {
-                return;
-            }
-            util::skip(clen);
-            break;
+        unsafe {
+            b.set_len(dlen);
         }
-
-        loop {
-            // 截图
-            cap.cap(&mut data1);
-            if data1 == data2 {
-                continue;
-            }
-            // 做减法
-            data2.par_iter_mut().zip(data1.par_iter()).for_each(|(d2, d1)|{
-                *d2 ^= *d1;
-            });
-            // 压缩
-            unsafe {
-                pres_data.set_len(0);
-            }
-            let clen = ctx.compress(&mut pres_data, &data2, COMPRESS_LEVEL).unwrap();
-            // let clen = util::compress(&data2, &mut pres_data);
-            // 发送diff
-            encode(clen, &mut header);
-            if let Err(_) = stream.write_all(&header) {
-                return;
-            }
-            if let Err(_) = stream.write_all(&pres_data[..clen]) {
-                return;
-            }
-            util::skip(clen);
-            break;
+        (enzip, cap, a, b) = cap_and_swap(enzip, cap, a, b);
+        let clen = b.len();
+        encode(clen, &mut header);
+        if let Err(_) = stream.write_all(&header) {
+            return;
+        }
+        if let Err(_) = stream.write_all(&b) {
+            return;
         }
     }
 }

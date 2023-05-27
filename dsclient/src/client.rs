@@ -1,3 +1,4 @@
+use flate2::write::ZlibDecoder;
 use fltk::button::Button;
 use fltk::enums::Color;
 use fltk::frame::Frame;
@@ -61,6 +62,51 @@ enum Msg {
 #[inline]
 fn depack(buffer: &[u8]) -> usize {
     ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
+}
+
+struct DefDecoder {
+    decoder: ZlibDecoder<Vec<u8>>,
+}
+
+impl DefDecoder {
+    fn new(mut swap: Vec<u8>) -> Self {
+        unsafe {
+            swap.set_len(0);
+        }
+        Self {
+            decoder: ZlibDecoder::new(swap),
+        }
+    }
+    fn write_all(&mut self, buf: &[u8]) {
+        self.decoder.write_all(buf).unwrap();
+    }
+    fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
+        unsafe {
+            swap.set_len(0);
+        }
+        let s = self.decoder.reset(swap).unwrap();
+        return s;
+    }
+}
+
+/*
+a: 老图像
+b: 压缩图像
+return: 新图像, 老图像
+ */
+fn unzip_and_swap(
+    mut unzip: DefDecoder,
+    a: Vec<u8>,
+    mut b: Vec<u8>,
+) -> (DefDecoder, Vec<u8>, Vec<u8>) {
+    // 解压
+    unzip.write_all(&mut b);
+    let mut b = unzip.read(b);
+    // 计算差异
+    b.par_iter_mut().zip(a.par_iter()).for_each(|(d1, d2)| {
+        *d1 ^= *d2;
+    });
+    return (unzip, b, a);
 }
 
 fn draw(host: String, pwd: String) {
@@ -229,27 +275,27 @@ fn draw(host: String, pwd: String) {
     let (tx, rx) = app::channel::<Msg>();
 
     std::thread::spawn(move || {
-        let mut ctx = zstd::zstd_safe::DCtx::create();
-        let mut recv_buf = Vec::<u8>::with_capacity(dlen);
-        unsafe {
-            recv_buf.set_len(dlen);
-        }
-        let mut depres_data = Vec::<u8>::with_capacity(dlen);
+        let a = Vec::<u8>::with_capacity(dlen);
+        let mut b = Vec::<u8>::with_capacity(dlen);
+        let c = Vec::<u8>::with_capacity(dlen);
+        let mut unzip = DefDecoder::new(c);
         // 接收第一帧数据
         let mut header = [0u8; 3];
         if let Err(_) = conn.read_exact(&mut header) {
             return;
         }
         let recv_len = depack(&header);
-        if let Err(e) = conn.read_exact(&mut recv_buf[..recv_len]) {
+        unsafe {
+            b.set_len(recv_len);
+        }
+        if let Err(e) = conn.read_exact(&mut b) {
             println!("error {}", e);
             return;
         }
+        unzip.write_all(&b);
+        let mut a = unzip.read(a);
         if let Ok(mut _buf) = work_buf.write() {
-            unsafe {
-                _buf.set_len(0);
-            }
-            ctx.decompress(&mut *_buf, &recv_buf[..recv_len]).unwrap();
+            _buf.copy_from_slice(&a);
         }
         tx.send(Msg::Draw);
 
@@ -258,20 +304,15 @@ fn draw(host: String, pwd: String) {
                 return;
             }
             let recv_len = depack(&header);
-            if let Err(_) = conn.read_exact(&mut recv_buf[..recv_len]) {
+            unsafe {
+                b.set_len(recv_len);
+            }
+            if let Err(_) = conn.read_exact(&mut b) {
                 return;
             }
-            unsafe {
-                depres_data.set_len(0);
-            }
-            ctx.decompress(&mut depres_data, &recv_buf[..recv_len])
-                .unwrap();
+            (unzip, a, b) = unzip_and_swap(unzip, a, b);
             if let Ok(mut _buf) = work_buf.write() {
-                _buf.par_iter_mut()
-                    .zip(depres_data.par_iter())
-                    .for_each(|(_d, d)| {
-                        *_d ^= *d;
-                    });
+                _buf.copy_from_slice(&a);
             }
             tx.send(Msg::Draw);
         }
