@@ -1,5 +1,6 @@
 use flate2::write::ZlibDecoder;
 use fltk::button::Button;
+use fltk::draw;
 use fltk::enums::Color;
 use fltk::frame::Frame;
 use fltk::input::Input;
@@ -69,6 +70,7 @@ struct DefDecoder {
 }
 
 impl DefDecoder {
+    #[inline]
     fn new(mut swap: Vec<u8>) -> Self {
         unsafe {
             swap.set_len(0);
@@ -77,9 +79,11 @@ impl DefDecoder {
             decoder: ZlibDecoder::new(swap),
         }
     }
+    #[inline]
     fn write_all(&mut self, buf: &[u8]) {
         self.decoder.write_all(buf).unwrap();
     }
+    #[inline]
     fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
         unsafe {
             swap.set_len(0);
@@ -94,6 +98,7 @@ a: 老图像
 b: 压缩图像
 return: 新图像, 老图像
  */
+#[inline]
 fn unzip_and_swap(
     mut unzip: DefDecoder,
     a: Vec<u8>,
@@ -160,18 +165,6 @@ fn draw(host: String, pwd: String) {
 
     let work_buf = Arc::new(RwLock::new(vec![0u8; dlen]));
     let draw_work_buf = work_buf.clone();
-    frame.draw(move |f| {
-        if let Ok(_buf) = draw_work_buf.read() {
-            unsafe {
-                if let Ok(mut image) =
-                    image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
-                {
-                    image.scale(f.width(), f.height(), false, true);
-                    image.draw(f.x(), f.y(), f.width(), f.height());
-                }
-            }
-        }
-    });
     let mut hooked = false;
     let mut bmap = bitmap::Bitmap::new();
     let mut cmd_buf = [0u8; 5];
@@ -317,10 +310,32 @@ fn draw(host: String, pwd: String) {
             tx.send(Msg::Draw);
         }
     });
+    let mut last = std::time::Instant::now();
+    let mut fps = 0u8;
+    let mut fpscount = 0u8;
     while app::wait() {
         match rx.recv() {
             Some(Msg::Draw) => {
-                frame.redraw();
+                if let Ok(_buf) = draw_work_buf.read() {
+                    unsafe {
+                        if let Ok(mut image) =
+                            image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+                        {
+                            image.scale(frame.width(), frame.height(), false, true);
+                            image.draw(frame.x(), frame.y(), frame.width(), frame.height());
+                            draw::set_color_rgb(0, 0, 0);
+                            draw::draw_text(&format!("FPS: {}", fps), frame.x() + frame.width() - 60, 20);
+                        }
+                    }
+                }
+                let cur = std::time::Instant::now();
+                let dur = cur.duration_since(last);
+                fpscount += 1;
+                if dur.as_millis() >= 1000 {
+                    last = cur;
+                    fps = fpscount;
+                    fpscount = 0;
+                }
             }
             _ => {}
         }

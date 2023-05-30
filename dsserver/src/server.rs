@@ -19,6 +19,7 @@ struct DefEncoder {
 }
 
 impl DefEncoder {
+    #[inline]
     fn new(mut swap: Vec<u8>) -> Self {
         unsafe {
             swap.set_len(0);
@@ -27,9 +28,11 @@ impl DefEncoder {
             encoder: ZlibEncoder::new(swap, Compression::default()),
         }   
     }
+    #[inline]
     fn write_all(&mut self, buf: &[u8]) {
         self.encoder.write_all(buf).unwrap();
     }
+    #[inline]
     fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
         unsafe {
             swap.set_len(0);
@@ -192,6 +195,7 @@ a: 老图像
 b: 新图像
 return: 老图像, 待发送图像
  */
+#[inline]
 fn cap_and_swap(mut enzip: DefEncoder, mut cap: Cap, mut a: Vec<u8>, mut b: Vec<u8>) -> (DefEncoder, Cap, Vec<u8>, Vec<u8>) {
     loop {
         cap.cap(&mut b);
