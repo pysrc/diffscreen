@@ -290,6 +290,10 @@ fn draw(host: String, pwd: String) {
         let mut b = Vec::<u8>::with_capacity(dlen);
         let c = Vec::<u8>::with_capacity(dlen);
         let mut unzip = DefDecoder::new(c);
+        // FPS
+        let mut last = std::time::Instant::now();
+        let mut fps = 0u8;
+        let mut fpscount = 0u8;
         // 接收第一帧数据
         let mut header = [0u8; 3];
         if let Err(_) = conn.read_exact(&mut header) {
@@ -325,15 +329,7 @@ fn draw(host: String, pwd: String) {
             if let Ok(mut _buf) = work_buf.write() {
                 _buf.copy_from_slice(&a);
             }
-            tx.send(Msg::Draw);
-        }
-    });
-    let mut last = std::time::Instant::now();
-    let mut fps = 0u8;
-    let mut fpscount = 0u8;
-    while app::wait() {
-        match rx.recv() {
-            Some(Msg::Draw) => {
+            {
                 let cur = std::time::Instant::now();
                 let dur = cur.duration_since(last);
                 fpscount += 1;
@@ -345,6 +341,13 @@ fn draw(host: String, pwd: String) {
                     fps = fpscount;
                     fpscount = 0;
                 }
+            }
+            tx.send(Msg::Draw);
+        }
+    });
+    while app::wait() {
+        match rx.recv() {
+            Some(Msg::Draw) => {
                 frame.redraw();
             }
             _ => {}
