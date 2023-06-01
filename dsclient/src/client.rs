@@ -264,6 +264,24 @@ fn draw(host: String, pwd: String) {
         }
         true
     });
+    let fpsstring = Arc::new(RwLock::new(String::new()));
+    let fpss = fpsstring.clone();
+    frame.draw(move |frame|{
+        if let Ok(_buf) = draw_work_buf.read() {
+            unsafe {
+                if let Ok(mut image) =
+                    image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+                {
+                    image.scale(frame.width(), frame.height(), false, true);
+                    image.draw(frame.x(), frame.y(), frame.width(), frame.height());
+                    draw::set_color_rgb(0, 0, 0);
+                    if let Ok(a) = fpss.read() {
+                        draw::draw_text(&a, frame.x() + frame.width() - 60, 20);
+                    }                    
+                }
+            }
+        }
+    });
 
     let (tx, rx) = app::channel::<Msg>();
 
@@ -316,26 +334,18 @@ fn draw(host: String, pwd: String) {
     while app::wait() {
         match rx.recv() {
             Some(Msg::Draw) => {
-                if let Ok(_buf) = draw_work_buf.read() {
-                    unsafe {
-                        if let Ok(mut image) =
-                            image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
-                        {
-                            image.scale(frame.width(), frame.height(), false, true);
-                            image.draw(frame.x(), frame.y(), frame.width(), frame.height());
-                            draw::set_color_rgb(0, 0, 0);
-                            draw::draw_text(&format!("FPS: {}", fps), frame.x() + frame.width() - 60, 20);
-                        }
-                    }
-                }
                 let cur = std::time::Instant::now();
                 let dur = cur.duration_since(last);
                 fpscount += 1;
                 if dur.as_millis() >= 1000 {
                     last = cur;
+                    if let Ok(mut a) = fpsstring.write() {
+                        *a = format!("FPS: {}", fps);
+                    }
                     fps = fpscount;
                     fpscount = 0;
                 }
+                frame.redraw();
             }
             _ => {}
         }
