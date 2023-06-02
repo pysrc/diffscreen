@@ -14,6 +14,6 @@ panic = "abort"
 [dependencies]
 dscom = {path = "../dscom"}
 
-flate2 = "1.0"
+zstd = "0.12"
 fltk = { version = "^1.3", git = "https://github.com/fltk-rs/fltk-rs" }
 rayon = "1.5"

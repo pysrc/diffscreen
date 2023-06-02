@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 dscom = {path = "../dscom"}
 
-flate2 = "1.0"
+zstd = "0.12"
 scrap = "0.5"
 enigo = "0.0.14"
 rayon = "1.5"

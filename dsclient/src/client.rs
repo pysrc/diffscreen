@@ -1,4 +1,3 @@
-use flate2::write::ZlibDecoder;
 use fltk::button::Button;
 use fltk::draw;
 use fltk::enums::Color;
@@ -7,6 +6,7 @@ use fltk::input::Input;
 use fltk::input::SecretInput;
 use fltk::prelude::InputExt;
 use fltk::window::Window;
+use zstd::zstd_safe::DCtx;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -65,53 +65,29 @@ fn depack(buffer: &[u8]) -> usize {
     ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
 }
 
-struct DefDecoder {
-    decoder: ZlibDecoder<Vec<u8>>,
-}
-
-impl DefDecoder {
-    #[inline]
-    fn new(mut swap: Vec<u8>) -> Self {
-        unsafe {
-            swap.set_len(0);
-        }
-        Self {
-            decoder: ZlibDecoder::new(swap),
-        }
-    }
-    #[inline]
-    fn write_all(&mut self, buf: &[u8]) {
-        self.decoder.write_all(buf).unwrap();
-    }
-    #[inline]
-    fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
-        unsafe {
-            swap.set_len(0);
-        }
-        let s = self.decoder.reset(swap).unwrap();
-        return s;
-    }
-}
-
 /*
 a: 老图像
-b: 压缩图像
-return: 新图像, 老图像
+b: 差异图像
+c: 接收到的图像
+return: 新图像, 差异图像, 接收到的图像
  */
 #[inline]
 fn unzip_and_swap(
-    mut unzip: DefDecoder,
-    a: Vec<u8>,
+    mut ctx: DCtx,
+    mut a: Vec<u8>,
     mut b: Vec<u8>,
-) -> (DefDecoder, Vec<u8>, Vec<u8>) {
+    c: Vec<u8>,
+) -> (DCtx, Vec<u8>, Vec<u8>, Vec<u8>) {
+    unsafe {
+        b.set_len(0);
+    }
     // 解压
-    unzip.write_all(&mut b);
-    let mut b = unzip.read(b);
+    ctx.decompress(&mut b, &c).unwrap();
     // 计算差异
-    b.par_iter_mut().zip(a.par_iter()).for_each(|(d1, d2)| {
+    a.par_iter_mut().zip(b.par_iter()).for_each(|(d1, d2)| {
         *d1 ^= *d2;
     });
-    return (unzip, b, a);
+    return (ctx, a, b, c);
 }
 
 fn draw(host: String, pwd: String) {
@@ -286,10 +262,10 @@ fn draw(host: String, pwd: String) {
     let (tx, rx) = app::channel::<Msg>();
 
     std::thread::spawn(move || {
-        let a = Vec::<u8>::with_capacity(dlen);
+        let mut a = Vec::<u8>::with_capacity(dlen);
         let mut b = Vec::<u8>::with_capacity(dlen);
-        let c = Vec::<u8>::with_capacity(dlen);
-        let mut unzip = DefDecoder::new(c);
+        let mut c = Vec::<u8>::with_capacity(dlen);
+        let mut ctx = zstd::zstd_safe::DCtx::create();
         // FPS
         let mut last = std::time::Instant::now();
         let mut fps = 0u8;
@@ -305,14 +281,13 @@ fn draw(host: String, pwd: String) {
         let recv_len = depack(&header);
         _length_sum += recv_len;
         unsafe {
-            b.set_len(recv_len);
+            c.set_len(recv_len);
         }
-        if let Err(e) = conn.read_exact(&mut b) {
+        if let Err(e) = conn.read_exact(&mut c) {
             println!("error {}", e);
             return;
         }
-        unzip.write_all(&b);
-        let mut a = unzip.read(a);
+        ctx.decompress(&mut a, &c).unwrap();
         if let Ok(mut _buf) = work_buf.write() {
             _buf.copy_from_slice(&a);
         }
@@ -325,12 +300,12 @@ fn draw(host: String, pwd: String) {
             let recv_len = depack(&header);
             _length_sum += recv_len;
             unsafe {
-                b.set_len(recv_len);
+                c.set_len(recv_len);
             }
-            if let Err(_) = conn.read_exact(&mut b) {
+            if let Err(_) = conn.read_exact(&mut c) {
                 return;
             }
-            (unzip, a, b) = unzip_and_swap(unzip, a, b);
+            (ctx, a, b, c) = unzip_and_swap(ctx, a, b, c);
             if let Ok(mut _buf) = work_buf.write() {
                 _buf.copy_from_slice(&a);
             }
