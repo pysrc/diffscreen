@@ -264,8 +264,8 @@ fn draw(host: String, pwd: String) {
         }
         true
     });
-    let fpsstring = Arc::new(RwLock::new(String::new()));
-    let fpss = fpsstring.clone();
+    let _tool_str = Arc::new(RwLock::new(String::new()));
+    let _tool_strc = _tool_str.clone();
     frame.draw(move |frame|{
         if let Ok(_buf) = draw_work_buf.read() {
             unsafe {
@@ -275,8 +275,8 @@ fn draw(host: String, pwd: String) {
                     image.scale(frame.width(), frame.height(), false, true);
                     image.draw(frame.x(), frame.y(), frame.width(), frame.height());
                     draw::set_color_rgb(0, 0, 0);
-                    if let Ok(a) = fpss.read() {
-                        draw::draw_text(&a, frame.x() + frame.width() - 60, 20);
+                    if let Ok(a) = _tool_strc.read() {
+                        draw::draw_text(&a, frame.x() + frame.width() - 180, 20);
                     }                    
                 }
             }
@@ -294,12 +294,16 @@ fn draw(host: String, pwd: String) {
         let mut last = std::time::Instant::now();
         let mut fps = 0u8;
         let mut fpscount = 0u8;
+        // 流速
+        let mut _length_all = 0usize;
+        let mut _length_sum = 0usize;
         // 接收第一帧数据
         let mut header = [0u8; 3];
         if let Err(_) = conn.read_exact(&mut header) {
             return;
         }
         let recv_len = depack(&header);
+        _length_sum += recv_len;
         unsafe {
             b.set_len(recv_len);
         }
@@ -319,6 +323,7 @@ fn draw(host: String, pwd: String) {
                 return;
             }
             let recv_len = depack(&header);
+            _length_sum += recv_len;
             unsafe {
                 b.set_len(recv_len);
             }
@@ -335,11 +340,13 @@ fn draw(host: String, pwd: String) {
                 fpscount += 1;
                 if dur.as_millis() >= 1000 {
                     last = cur;
-                    if let Ok(mut a) = fpsstring.write() {
-                        *a = format!("FPS: {}", fps);
+                    _length_all = _length_sum;
+                    if let Ok(mut a) = _tool_str.write() {
+                        *a = format!("FPS:{:2} | Rate:{:>6}kb/s", fps, _length_all * 8 / 1024);
                     }
                     fps = fpscount;
                     fpscount = 0;
+                    _length_sum = 0;
                 }
             }
             tx.send(Msg::Draw);
