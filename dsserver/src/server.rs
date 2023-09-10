@@ -82,10 +82,18 @@ pub fn run(port: u16, pwd: String) {
                 }
                 let ss = stream.try_clone().unwrap();
                 let th1 = std::thread::spawn(move || {
-                    screen_stream(ss);
+                    if let Err(e) = std::panic::catch_unwind(||{
+                        screen_stream(ss);
+                    }) {
+                        eprintln!("{:?}", e);
+                    }
                 });
                 let th2 = std::thread::spawn(move || {
-                    event(stream);
+                    if let Err(e) = std::panic::catch_unwind(||{
+                        event(stream);
+                    }) {
+                        eprintln!("{:?}", e);
+                    }
                 });
                 th1.join().unwrap();
                 th2.join().unwrap();
