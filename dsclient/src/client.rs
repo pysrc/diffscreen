@@ -317,7 +317,7 @@ fn draw(host: String, pwd: String) {
                     last = cur;
                     _length_all = _length_sum;
                     if let Ok(mut a) = _tool_str.write() {
-                        *a = format!("FPS:{:2} | Rate:{:>6}kb/s", fps, _length_all / 1024);
+                        *a = format!("FPS:{:2} | Rate:{:>6}KB/s", fps, _length_all / 1024);
                     }
                     fps = fpscount;
                     fpscount = 0;
