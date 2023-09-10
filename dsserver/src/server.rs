@@ -214,8 +214,11 @@ fn screen_stream(mut stream: TcpStream) {
             yuv.set_len(0);
         }
         dscom::convert::bgra_to_i420(w, h, bgra, &mut yuv);
+        if yuv[..w*h] == last[..w*h] {
+            continue;
+        }
         last.par_iter_mut().zip(yuv.par_iter()).for_each(|(a, b)|{
-            *a = a.wrapping_sub(*b);
+            *a = *a ^ *b;
         });
         // 压缩
         unsafe {

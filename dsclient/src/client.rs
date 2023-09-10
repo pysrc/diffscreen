@@ -302,7 +302,7 @@ fn draw(host: String, pwd: String) {
             yuv = d.reset(yuv).unwrap();
 
             yuv.par_iter_mut().zip(_yuv.par_iter()).for_each(|(a, b)| {
-                *a = b.wrapping_sub(*a);
+                *a = *b ^ *a;
             });
 
             if let Ok(mut _buf) = work_buf.write() {
@@ -317,7 +317,7 @@ fn draw(host: String, pwd: String) {
                     last = cur;
                     _length_all = _length_sum;
                     if let Ok(mut a) = _tool_str.write() {
-                        *a = format!("FPS:{:2} | Rate:{:>6}kb/s", fps, _length_all * 8 / 1024);
+                        *a = format!("FPS:{:2} | Rate:{:>6}kb/s", fps, _length_all / 1024);
                     }
                     fps = fpscount;
                     fpscount = 0;
