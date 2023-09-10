@@ -1,4 +1,4 @@
-use flate2::write::ZlibDecoder;
+use flate2::write::DeflateDecoder;
 use fltk::button::Button;
 use fltk::draw;
 use fltk::enums::Color;
@@ -63,55 +63,6 @@ enum Msg {
 #[inline]
 fn depack(buffer: &[u8]) -> usize {
     ((buffer[0] as usize) << 16) | ((buffer[1] as usize) << 8) | (buffer[2] as usize)
-}
-
-struct DefDecoder {
-    decoder: ZlibDecoder<Vec<u8>>,
-}
-
-impl DefDecoder {
-    #[inline]
-    fn new(mut swap: Vec<u8>) -> Self {
-        unsafe {
-            swap.set_len(0);
-        }
-        Self {
-            decoder: ZlibDecoder::new(swap),
-        }
-    }
-    #[inline]
-    fn write_all(&mut self, buf: &[u8]) {
-        self.decoder.write_all(buf).unwrap();
-    }
-    #[inline]
-    fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
-        unsafe {
-            swap.set_len(0);
-        }
-        let s = self.decoder.reset(swap).unwrap();
-        return s;
-    }
-}
-
-/*
-a: 老图像
-b: 压缩图像
-return: 新图像, 老图像
- */
-#[inline]
-fn unzip_and_swap(
-    mut unzip: DefDecoder,
-    a: Vec<u8>,
-    mut b: Vec<u8>,
-) -> (DefDecoder, Vec<u8>, Vec<u8>) {
-    // 解压
-    unzip.write_all(&mut b);
-    let mut b = unzip.read(b);
-    // 计算差异
-    b.par_iter_mut().zip(a.par_iter()).for_each(|(d1, d2)| {
-        *d1 ^= *d2;
-    });
-    return (unzip, b, a);
 }
 
 fn draw(host: String, pwd: String) {
@@ -286,10 +237,12 @@ fn draw(host: String, pwd: String) {
     let (tx, rx) = app::channel::<Msg>();
 
     std::thread::spawn(move || {
-        let a = Vec::<u8>::with_capacity(dlen);
-        let mut b = Vec::<u8>::with_capacity(dlen);
-        let c = Vec::<u8>::with_capacity(dlen);
-        let mut unzip = DefDecoder::new(c);
+        let u = (w * h) as usize;
+        let v = u + u/4;
+        let mut yuv = Vec::<u8>::new();
+        let mut _yuv = Vec::<u8>::new();
+        let mut buf = Vec::<u8>::new();
+
         // FPS
         let mut last = std::time::Instant::now();
         let mut fps = 0u8;
@@ -304,18 +257,25 @@ fn draw(host: String, pwd: String) {
         }
         let recv_len = depack(&header);
         _length_sum += recv_len;
-        unsafe {
-            b.set_len(recv_len);
+        
+        if buf.capacity() < recv_len {
+            buf.resize(recv_len, 0u8);
         }
-        if let Err(e) = conn.read_exact(&mut b) {
+        if let Err(e) = conn.read_exact(&mut buf) {
             println!("error {}", e);
             return;
         }
-        unzip.write_all(&b);
-        let mut a = unzip.read(a);
-        if let Ok(mut _buf) = work_buf.write() {
-            _buf.copy_from_slice(&a);
+        unsafe {
+            yuv.set_len(0);
         }
+        let mut d = DeflateDecoder::new(yuv);
+        d.write_all(&buf).unwrap();
+        yuv = d.reset(Vec::new()).unwrap();
+
+        if let Ok(mut _buf) = work_buf.write() {
+            dscom::convert::i420_to_rgb(w as usize, h as usize, &yuv[..u], &yuv[u..v], &yuv[v..], &mut _buf);
+        }
+        (_yuv, yuv) = (yuv, _yuv);
         tx.send(Msg::Draw);
 
         loop {
@@ -324,16 +284,31 @@ fn draw(host: String, pwd: String) {
             }
             let recv_len = depack(&header);
             _length_sum += recv_len;
-            unsafe {
-                b.set_len(recv_len);
+            
+            if buf.capacity() < recv_len {
+                buf.resize(recv_len, 0u8);
+            } else {
+                unsafe {
+                    buf.set_len(recv_len);
+                }
             }
-            if let Err(_) = conn.read_exact(&mut b) {
+            if let Err(_) = conn.read_exact(&mut buf) {
                 return;
             }
-            (unzip, a, b) = unzip_and_swap(unzip, a, b);
-            if let Ok(mut _buf) = work_buf.write() {
-                _buf.copy_from_slice(&a);
+            unsafe {
+                yuv.set_len(0);
             }
+            d.write_all(&buf).unwrap();
+            yuv = d.reset(yuv).unwrap();
+
+            yuv.par_iter_mut().zip(_yuv.par_iter()).for_each(|(a, b)| {
+                *a = b.wrapping_sub(*a);
+            });
+
+            if let Ok(mut _buf) = work_buf.write() {
+                dscom::convert::i420_to_rgb(w as usize, h as usize, &yuv[..u], &yuv[u..v], &yuv[v..], &mut _buf);
+            }
+            (_yuv, yuv) = (yuv, _yuv);
             {
                 let cur = std::time::Instant::now();
                 let dur = cur.duration_since(last);

@@ -4,7 +4,7 @@ use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
 use flate2::Compression;
-use flate2::write::ZlibEncoder;
+use flate2::write::DeflateEncoder;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -13,35 +13,6 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
 use rayon::prelude::*;
-
-struct DefEncoder {
-    encoder: ZlibEncoder<Vec<u8>>
-}
-
-impl DefEncoder {
-    #[inline]
-    fn new(mut swap: Vec<u8>) -> Self {
-        unsafe {
-            swap.set_len(0);
-        }
-        Self {
-            encoder: ZlibEncoder::new(swap, Compression::default()),
-        }   
-    }
-    #[inline]
-    fn write_all(&mut self, buf: &[u8]) {
-        self.encoder.write_all(buf).unwrap();
-    }
-    #[inline]
-    fn read(&mut self, mut swap: Vec<u8>) -> Vec<u8> {
-        unsafe {
-            swap.set_len(0);
-        }
-        let s = self.encoder.reset(swap).unwrap();
-        return s;
-    }
-
-}
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -191,29 +162,6 @@ fn encode(data_len: usize, res: &mut [u8]) {
 
 
 /*
-a: 老图像
-b: 新图像
-return: 老图像, 待发送图像
- */
-#[inline]
-fn cap_and_swap(mut enzip: DefEncoder, mut cap: Cap, mut a: Vec<u8>, mut b: Vec<u8>) -> (DefEncoder, Cap, Vec<u8>, Vec<u8>) {
-    loop {
-        cap.cap(&mut b);
-        if a == b {
-            continue;
-        }
-        // 计算差异
-        a.par_iter_mut().zip(b.par_iter()).for_each(|(d1, d2)|{
-            *d1 ^= *d2;
-        });
-        // 压缩
-        enzip.write_all(&mut a);
-        let c = enzip.read(a);
-        return (enzip, cap, b, c);
-    }
-}
-
-/*
 图像字节序
 +------------+
 |     24     |
@@ -229,11 +177,6 @@ fn screen_stream(mut stream: TcpStream) {
     let mut cap = Cap::new();
 
     let (w, h) = cap.wh();
-    let dlen = w * h * 3;
-    let mut a = Vec::<u8>::with_capacity(dlen);
-    let b: Vec<u8> = Vec::<u8>::with_capacity(dlen);
-    let c = Vec::<u8>::with_capacity(dlen);
-    let mut enzip = DefEncoder::new(c);
 
     // 发送w, h
     let mut meta = [0u8; 4];
@@ -245,33 +188,49 @@ fn screen_stream(mut stream: TcpStream) {
         return;
     }
     let mut header = [0u8; 3];
+    let mut yuv = Vec::<u8>::new();
+    let mut last = Vec::<u8>::new();
     // 第一帧
-    unsafe {
-        a.set_len(dlen);
-    }
-    cap.cap(&mut a);
+    let bgra = cap.cap();
+    dscom::convert::bgra_to_i420(w, h, bgra, &mut yuv);
     // 压缩
-    enzip.write_all(&a);
-    let mut b = enzip.read(b);
-    let clen = b.len();
+    let mut buf = Vec::<u8>::with_capacity(1024 * 4);
+    let mut e = DeflateEncoder::new(buf, Compression::default());
+    e.write_all(&yuv).unwrap();
+    buf = e.reset(Vec::new()).unwrap();
+    (last, yuv) = (yuv, last);
+
+    let clen = buf.len();
     encode(clen, &mut header);
     if let Err(_) = stream.write_all(&header) {
         return;
     }
-    if let Err(_) = stream.write_all(&b) {
+    if let Err(_) = stream.write_all(&buf) {
         return;
     }
     loop {
+        let bgra = cap.cap();
         unsafe {
-            b.set_len(dlen);
+            yuv.set_len(0);
         }
-        (enzip, cap, a, b) = cap_and_swap(enzip, cap, a, b);
-        let clen = b.len();
+        dscom::convert::bgra_to_i420(w, h, bgra, &mut yuv);
+        last.par_iter_mut().zip(yuv.par_iter()).for_each(|(a, b)|{
+            *a = a.wrapping_sub(*b);
+        });
+        // 压缩
+        unsafe {
+            buf.set_len(0);
+        }
+        e.write_all(&last).unwrap();
+        buf = e.reset(buf).unwrap();
+        (last, yuv) = (yuv, last);
+        // 发送
+        let clen = buf.len();
         encode(clen, &mut header);
         if let Err(_) = stream.write_all(&header) {
             return;
         }
-        if let Err(_) = stream.write_all(&b) {
+        if let Err(_) = stream.write_all(&buf) {
             return;
         }
     }
