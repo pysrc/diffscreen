@@ -10,5 +10,5 @@ dscom = {path = "../dscom"}
 
 flate2 = "1.0"
 scrap = "0.5"
-enigo = "0.1.3"
+enigo = "0.2.1"
 rayon = "1.5"
