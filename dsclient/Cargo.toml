@@ -15,5 +15,5 @@ panic = "abort"
 dscom = {path = "../dscom"}
 
 flate2 = "1.0"
-fltk = { version = "^1.3", git = "https://github.com/fltk-rs/fltk-rs" }
+fltk = { version = "1.4.34", features = ["use-ninja"] }
 rayon = "1.5"
