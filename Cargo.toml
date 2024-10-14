@@ -1,7 +1,14 @@
 [workspace]
+resolver = "2"
 
 members = [
     "dscom",
     "dsserver",
     "dsclient"
 ]
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+panic = "abort"
