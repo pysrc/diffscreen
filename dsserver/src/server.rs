@@ -1,10 +1,8 @@
 use crate::key_mouse;
-use crate::screen::Cap;
+use crate::screen;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
-use flate2::Compression;
-use flate2::write::DeflateEncoder;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -12,7 +10,8 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
-use rayon::prelude::*;
+use std::thread;
+use std::time;
 
 pub fn run(port: u16, pwd: String) {
     let mut hasher = DefaultHasher::new();
@@ -182,9 +181,21 @@ length: 数据长度
 data: 数据
 */
 fn screen_stream(mut stream: TcpStream) {
-    let mut cap = Cap::new();
+    let fps = 30;
+    let spf = time::Duration::from_nanos(1_000_000_000 / fps);
+    // vpxencode
+    let (iw, ih) = screen::cap_wh().unwrap();
+    let ecfg = vpx_codec::encoder::Config {
+        width: iw as _,
+        height: ih as _,
+        timebase: [1, (fps as i32) * 1000], // 120fps
+        bitrate: 8192,
+        codec: vpx_codec::encoder::VideoCodecId::VP8,
+    };
+    let mut enc = vpx_codec::encoder::Encoder::new(ecfg).unwrap();
+    
 
-    let (w, h) = cap.wh();
+    let (w, h) = (iw as usize, ih as usize);
 
     // 发送w, h
     let mut meta = [0u8; 4];
@@ -195,54 +206,40 @@ fn screen_stream(mut stream: TcpStream) {
     if let Err(_) = stream.write_all(&meta) {
         return;
     }
-    let mut header = [0u8; 3];
-    let mut yuv = Vec::<u8>::new();
-    let mut last = Vec::<u8>::new();
-    // 第一帧
-    let bgra = cap.cap();
-    dscom::convert::bgra_to_i420(w, h, bgra, &mut yuv);
-    // 压缩
-    let mut buf = Vec::<u8>::with_capacity(1024 * 4);
-    let mut e = DeflateEncoder::new(buf, Compression::default());
-    e.write_all(&yuv).unwrap();
-    buf = e.reset(Vec::new()).unwrap();
-    (last, yuv) = (yuv, last);
 
-    let clen = buf.len();
-    encode(clen, &mut header);
-    if let Err(_) = stream.write_all(&header) {
-        return;
-    }
-    if let Err(_) = stream.write_all(&buf) {
-        return;
-    }
+    let mut header = [0u8; 3];
+    let start = time::Instant::now();
+    let mut yuv = Vec::<u8>::new();
     loop {
-        let bgra = cap.cap();
-        unsafe {
-            yuv.set_len(0);
-        }
-        dscom::convert::bgra_to_i420(w, h, bgra, &mut yuv);
-        if yuv[..w*h] == last[..w*h] {
-            continue;
-        }
-        last.par_iter_mut().zip(yuv.par_iter()).for_each(|(a, b)|{
-            *a = *a ^ *b;
-        });
-        // 压缩
-        unsafe {
-            buf.set_len(0);
-        }
-        e.write_all(&last).unwrap();
-        buf = e.reset(buf).unwrap();
-        (last, yuv) = (yuv, last);
-        // 发送
-        let clen = buf.len();
-        encode(clen, &mut header);
-        if let Err(_) = stream.write_all(&header) {
-            return;
-        }
-        if let Err(_) = stream.write_all(&buf) {
-            return;
+        let now = time::Instant::now();
+        let time = now - start;
+        let ms = time.as_secs() * 1000 + time.subsec_millis() as u64;
+        match screen::cap_screen(&mut yuv)  {
+            Some((_iw, _ih)) => {
+                if iw != _iw || ih != _ih {
+                    let _ = enc.finish();
+                    println!("encode break work.");
+                    return;
+                }
+
+                for f in enc.encode(ms as i64, &yuv).unwrap() {
+                    let len = f.data.len();
+                    encode(len, &mut header);
+                    if let Err(_) = stream.write_all(&header) {
+                        return;
+                    }
+                    if let Err(_) = stream.write_all(f.data) {
+                        return;
+                    }
+                }
+                let dt = now.elapsed();
+                if dt < spf {
+                    thread::sleep(spf - dt);
+                }
+            }
+            None => {
+                thread::sleep(time::Duration::from_millis(10));
+            }
         }
     }
 }

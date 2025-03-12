@@ -1,0 +1,193 @@
+name: Build and Run
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # At 23:25 on Thursday.
+    - cron: "25 23 * * 4"
+
+jobs:
+  windows-vpx1_8_2:
+    strategy:
+      matrix:
+        runs-on: [windows-2019, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          curl -sSfL -O https://github.com/ShiftMediaProject/libvpx/releases/download/v1.8.2/libvpx_v1.8.2_msvc16.zip
+          unzip libvpx_v1.8.2_msvc16.zip -d $HOME\unzipped
+          dir
+          dir $HOME\unzipped
+          dir $HOME\unzipped\lib\x64
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          $Env:VPX_STATIC = "1"
+          $Env:VPX_VERSION = "1.8.2"
+          $Env:VPX_LIB_DIR = "$HOME\unzipped\lib\x64"
+          $Env:VPX_INCLUDE_DIR = "$HOME\unzipped\include"
+          cargo run
+
+  windows-vpx1_9_0:
+    strategy:
+      matrix:
+        runs-on: [windows-2019, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          curl -sSfL -O  https://github.com/ShiftMediaProject/libvpx/releases/download/v1.9.0/libvpx_v1.9.0_msvc16.zip
+          unzip libvpx_v1.9.0_msvc16.zip -d $HOME\unzipped
+          dir
+          dir $HOME\unzipped
+          dir $HOME\unzipped\lib\x64
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          $Env:VPX_STATIC = "1"
+          $Env:VPX_VERSION = "1.9.0"
+          $Env:VPX_LIB_DIR = "$HOME\unzipped\lib\x64"
+          $Env:VPX_INCLUDE_DIR = "$HOME\unzipped\include"
+          cargo run
+
+  windows-vpx1_10_0:
+    strategy:
+      matrix:
+        runs-on: [windows-2019, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          curl -sSfL -O  https://github.com/ShiftMediaProject/libvpx/releases/download/v1.10.0/libvpx_v1.10.0_msvc16.zip
+          unzip libvpx_v1.10.0_msvc16.zip -d $HOME\unzipped
+          dir
+          dir $HOME\unzipped
+          dir $HOME\unzipped\lib\x64
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          $Env:VPX_STATIC = "1"
+          $Env:VPX_VERSION = "1.10.0"
+          $Env:VPX_LIB_DIR = "$HOME\unzipped\lib\x64"
+          $Env:VPX_INCLUDE_DIR = "$HOME\unzipped\include"
+          cargo run
+
+  windows-vpx1_13_0:
+    strategy:
+      matrix:
+        runs-on: [windows-2019, windows-2022]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          curl -sSfL -O  https://github.com/ShiftMediaProject/libvpx/releases/download/v1.13.0/libvpx_v1.13.0_msvc16.zip
+          unzip libvpx_v1.13.0_msvc16.zip -d $HOME\unzipped
+          dir
+          dir $HOME\unzipped
+          dir $HOME\unzipped\lib\x64
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          $Env:VPX_STATIC = "1"
+          $Env:VPX_VERSION = "1.13.0"
+          $Env:VPX_LIB_DIR = "$HOME\unzipped\lib\x64"
+          $Env:VPX_INCLUDE_DIR = "$HOME\unzipped\include"
+          cargo run
+
+  macos-latest-vpx1_8_1:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          cd /tmp
+          curl --silent -O -L https://strawlab-cdn.com/assets/libvpx-1.8.1.sierra.bottle.tar.gz
+          sudo mkdir -p /opt
+          sudo tar xvzf /tmp/libvpx-1.8.1.sierra.bottle.tar.gz -C /opt
+      - name: install rustup
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          export VPX_STATIC=1
+          export VPX_VERSION="1.8.1"
+          export VPX_LIB_DIR="/opt/libvpx/1.8.1/lib"
+          export VPX_INCLUDE_DIR="/opt/libvpx/1.8.1/include"
+          export PATH="$PATH:$HOME/.cargo/bin"
+          cargo run
+
+  macos-latest-homebrew-vpx-generate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: install libvpx using homebrew
+        run: |
+          brew install libvpx
+      - name: install rustup
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          cargo run --features env-libvpx-sys/generate
+
+  ubuntu-20_04-vpx1_8:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libvpx-dev
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          cargo run
+
+  ubuntu-20_04-vpx1_8-generate:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libvpx-dev
+      - name: Run test
+        run: |
+          rm -rf generated
+          cd vpx-sys-test
+          cargo run --features env-libvpx-sys/generate
+
+  ubuntu-22_04-vpx1_11:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libvpx-dev
+      - name: Run test
+        run: |
+          cd vpx-sys-test
+          cargo run
+
+  ubuntu-22_04-vpx-generate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: download and extract libvpx
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libvpx-dev
+      - name: Run test
+        run: |
+          rm -rf generated
+          cd vpx-sys-test
+          cargo run --features env-libvpx-sys/generate

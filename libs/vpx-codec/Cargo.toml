@@ -1,14 +1,14 @@
 [package]
-name = "dsserver"
+name = "vpx-codec"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dscom = {path = "../dscom"}
+env-libvpx-sys = { path = "../env-libvpx-sys" }
+thiserror = "1"
 
-scrap = "0.5"
-enigo = "0.1.3"
-
-vpx-codec = { path = "../libs/vpx-codec" }
+[features]
+vp9 = []
+backtrace = []

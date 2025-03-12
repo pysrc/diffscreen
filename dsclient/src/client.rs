@@ -1,6 +1,4 @@
-use flate2::write::DeflateDecoder;
 use fltk::button::Button;
-use fltk::draw;
 use fltk::enums::Color;
 use fltk::frame::Frame;
 use fltk::input::Input;
@@ -12,6 +10,8 @@ use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -23,7 +23,6 @@ use fltk::prelude::GroupExt;
 use fltk::prelude::ImageExt;
 use fltk::prelude::WidgetBase;
 use fltk::prelude::WidgetExt;
-use rayon::prelude::*;
 
 use crate::bitmap;
 
@@ -40,7 +39,7 @@ pub fn app_run() {
     );
     wind.set_color(Color::from_rgb(255, 255, 255));
     let mut host_ipt = Input::new(80, 20, 200, 25, "HOST:");
-    host_ipt.set_value("127.0.0.1:80");
+    host_ipt.set_value("127.0.0.1:38971");
     let mut pwd_ipt = SecretInput::new(80, 50, 200, 25, "PASS:");
     pwd_ipt.set_value("diffscreen");
     let mut login_btn = Button::new(200, 80, 80, 40, "Login");
@@ -109,17 +108,22 @@ fn draw(host: String, pwd: String) {
     if let Err(_) = conn.read_exact(&mut meta) {
         return;
     }
-    let w = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
-    let h = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
+    let iw = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
+    let ih = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
-    let dlen = (w * h * 3) as usize;
+    let wh = Arc::new((AtomicI32::new(iw), AtomicI32::new(ih)));
 
-    let work_buf = Arc::new(RwLock::new(vec![0u8; dlen]));
+
+    // let dlen = (w * h * 3) as usize;
+
+    let work_buf = Arc::new(RwLock::new((0usize, 0usize, Vec::<u8>::new())));
     let draw_work_buf = work_buf.clone();
     let mut hooked = false;
     let mut bmap = bitmap::Bitmap::new();
     let mut cmd_buf = [0u8; 5];
+    let wh1 = wh.clone();
     frame.handle(move |f, ev| {
+        let (w, h) = (wh1.0.load(Ordering::Relaxed), wh1.1.load(Ordering::Relaxed));
         match ev {
             Event::Enter => {
                 // 进入窗口
@@ -215,20 +219,14 @@ fn draw(host: String, pwd: String) {
         }
         true
     });
-    let _tool_str = Arc::new(RwLock::new(String::new()));
-    let _tool_strc = _tool_str.clone();
     frame.draw(move |frame|{
-        if let Ok(_buf) = draw_work_buf.read() {
+        if let Ok(p) = draw_work_buf.read() {
             unsafe {
                 if let Ok(mut image) =
-                    image::RgbImage::from_data2(&_buf, w, h, enums::ColorDepth::Rgb8 as i32, 0)
+                    image::RgbImage::from_data2(&p.2, p.0 as _, p.1 as _, enums::ColorDepth::Rgb8 as i32, 0)
                 {
                     image.scale(frame.width(), frame.height(), false, true);
-                    image.draw(frame.x(), frame.y(), frame.width(), frame.height());
-                    draw::set_color_rgb(0, 0, 0);
-                    if let Ok(a) = _tool_strc.read() {
-                        draw::draw_text(&a, frame.x() + frame.width() - 180, 20);
-                    }                    
+                    image.draw(frame.x(), frame.y(), frame.width(), frame.height());             
                 }
             }
         }
@@ -237,94 +235,46 @@ fn draw(host: String, pwd: String) {
     let (tx, rx) = app::channel::<Msg>();
 
     std::thread::spawn(move || {
-        let u = (w * h) as usize;
-        let v = u + u/4;
-        let mut yuv = Vec::<u8>::new();
-        let mut _yuv = Vec::<u8>::new();
         let mut buf = Vec::<u8>::new();
+        let fps = 30;
 
-        // FPS
-        let mut last = std::time::Instant::now();
-        let mut fps = 0u8;
-        let mut fpscount = 0u8;
-        // 流速
-        let mut _length_all = 0usize;
-        let mut _length_sum = 0usize;
-        // 接收第一帧数据
-        let mut header = [0u8; 3];
-        if let Err(_) = conn.read_exact(&mut header) {
-            return;
-        }
-        let recv_len = depack(&header);
-        _length_sum += recv_len;
-        
-        if buf.capacity() < recv_len {
-            buf.resize(recv_len, 0u8);
-        }
-        if let Err(e) = conn.read_exact(&mut buf) {
-            println!("error {}", e);
-            return;
-        }
-        unsafe {
-            yuv.set_len(0);
-        }
-        let mut d = DeflateDecoder::new(yuv);
-        d.write_all(&buf).unwrap();
-        yuv = d.reset(Vec::new()).unwrap();
+        let ecfg = vpx_codec::decoder::Config {
+            width: iw as _,
+            height: ih as _,
+            timebase: [1, (fps as i32) * 1000], // 120fps
+            bitrate: 8192,
+            codec: vpx_codec::decoder::VideoCodecId::VP8,
+        };
 
-        if let Ok(mut _buf) = work_buf.write() {
-            dscom::convert::i420_to_rgb(w as usize, h as usize, &yuv[..u], &yuv[u..v], &yuv[v..], &mut _buf);
-        }
-        (_yuv, yuv) = (yuv, _yuv);
-        tx.send(Msg::Draw);
+        let mut dec = vpx_codec::decoder::Decoder::new(ecfg).unwrap();
 
         loop {
+            let mut header = [0u8; 3];
             if let Err(_) = conn.read_exact(&mut header) {
                 return;
             }
             let recv_len = depack(&header);
-            _length_sum += recv_len;
             
-            if buf.capacity() < recv_len {
-                buf.resize(recv_len, 0u8);
-            } else {
-                unsafe {
-                    buf.set_len(recv_len);
-                }
-            }
-            if let Err(_) = conn.read_exact(&mut buf) {
+            buf.resize(recv_len, 0u8);
+            if let Err(e) = conn.read_exact(&mut buf) {
+                println!("error {}", e);
                 return;
             }
-            unsafe {
-                yuv.set_len(0);
-            }
-            d.write_all(&buf).unwrap();
-            yuv = d.reset(yuv).unwrap();
 
-            yuv.par_iter_mut().zip(_yuv.par_iter()).for_each(|(a, b)| {
-                *a = *b ^ *a;
-            });
-
-            if let Ok(mut _buf) = work_buf.write() {
-                dscom::convert::i420_to_rgb(w as usize, h as usize, &yuv[..u], &yuv[u..v], &yuv[v..], &mut _buf);
-            }
-            (_yuv, yuv) = (yuv, _yuv);
-            {
-                let cur = std::time::Instant::now();
-                let dur = cur.duration_since(last);
-                fpscount += 1;
-                if dur.as_millis() >= 1000 {
-                    last = cur;
-                    _length_all = _length_sum;
-                    if let Ok(mut a) = _tool_str.write() {
-                        *a = format!("FPS:{:2} | Rate:{:>6}KB/s", fps, _length_all / 1024);
+            if let Ok(pkgs) = dec.decode(&buf) {
+                for ele in pkgs {
+                    let (y, u, v) = ele.data();
+                    if let Ok(mut p) = work_buf.write() {
+                        p.0 = ele.width();
+                        p.1 = ele.height();
+                        wh.0.store(ele.width() as _, Ordering::Relaxed);
+                        wh.1.store(ele.height() as _, Ordering::Relaxed);
+                        p.2.resize(ele.width() * ele.height() * 3, 0u8);
+                        dscom::convert::i420_to_rgb(ele.width(), ele.height(), y, u, v, &mut p.2);
                     }
-                    fps = fpscount;
-                    fpscount = 0;
-                    _length_sum = 0;
+                    tx.send(Msg::Draw);
                 }
             }
-            tx.send(Msg::Draw);
         }
     });
     while app::wait() {

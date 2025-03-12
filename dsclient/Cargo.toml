@@ -14,6 +14,6 @@ panic = "abort"
 [dependencies]
 dscom = {path = "../dscom"}
 
-flate2 = "1.0"
 fltk = { version = "1.5", features = ["fltk-bundled"] }
-rayon = "1.5"
+
+vpx-codec = { path = "../libs/vpx-codec" }
