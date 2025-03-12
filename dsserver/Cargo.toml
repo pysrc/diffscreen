@@ -9,6 +9,6 @@ edition = "2021"
 dscom = {path = "../dscom"}
 
 scrap = "0.5"
-enigo = "0.1.3"
 
 vpx-codec = { path = "../libs/vpx-codec" }
+enigo = {path = "../libs/enigo"}

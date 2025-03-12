@@ -1,0 +1,18 @@
+name: "headless_display"
+description: "Creates a virtual display so e.g Firefox can start"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Xvfb on Linux
+      if: runner.os == 'Linux'
+      run: |
+          sudo apt-get install -y xvfb
+          which Xvfb
+          # Set DISPLAY env variable
+          echo "DISPLAY=:99.0" >> $GITHUB_ENV
+          # Create virtual display with Xvfb
+          Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+          # Wait for Xvfb to start
+          sleep 3
+      shell: bash

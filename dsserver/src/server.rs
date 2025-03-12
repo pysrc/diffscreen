@@ -1,8 +1,14 @@
+use enigo::agent::Agent;
+use enigo::Axis;
+use enigo::Coordinate;
+use enigo::Direction;
+use enigo::Enigo;
+use enigo::Keyboard;
+use enigo::Mouse;
+use enigo::Settings;
+
 use crate::key_mouse;
 use crate::screen;
-use enigo::Enigo;
-use enigo::KeyboardControllable;
-use enigo::MouseControllable;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::io::Read;
@@ -10,6 +16,8 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::sync::mpsc::channel;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::thread;
 use std::time;
 
@@ -105,50 +113,77 @@ pub fn run(port: u16, pwd: String) {
     }
 }
 
+
+static mut ENIGO: LazyLock<Mutex<Enigo>> =
+    LazyLock::new(|| Mutex::new(Enigo::new(&Settings::default()).unwrap()));
+
 /**
  * 事件处理
  */
 fn event(mut stream: TcpStream) {
     let mut cmd = [0u8];
     let mut move_cmd = [0u8; 4];
-    let mut enigo = Enigo::new();
     while let Ok(_) = stream.read_exact(&mut cmd) {
         match cmd[0] {
             dscom::KEY_UP => {
                 stream.read_exact(&mut cmd).unwrap();
                 if let Some(key) = key_mouse::key_to_enigo(cmd[0]) {
-                    enigo.key_up(key);
+                    unsafe {
+                        if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                            let _ = eg.key(key, Direction::Release);
+                        }
+                    }
                 }
             }
             dscom::KEY_DOWN => {
                 stream.read_exact(&mut cmd).unwrap();
                 if let Some(key) = key_mouse::key_to_enigo(cmd[0]) {
-                    enigo.key_down(key);
+                    unsafe {
+                        if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                            let _ = eg.key(key, Direction::Press);
+                        }
+                    }
                 }
             }
             dscom::MOUSE_KEY_UP => {
                 stream.read_exact(&mut cmd).unwrap();
-                if let Some(key) = key_mouse::mouse_to_engin(cmd[0]) {
-                    enigo.mouse_up(key);
+                if let Some(button) = key_mouse::mouse_to_engin(cmd[0]) {
+                    unsafe {
+                        if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                            let _ = eg.button(button, Direction::Release);
+                        }
+                    }
                 }
             }
             dscom::MOUSE_KEY_DOWN => {
                 stream.read_exact(&mut cmd).unwrap();
-                if let Some(key) = key_mouse::mouse_to_engin(cmd[0]) {
-                    enigo.mouse_down(key);
+                if let Some(button) = key_mouse::mouse_to_engin(cmd[0]) {
+                    unsafe {
+                        if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                            let _ = eg.button(button, Direction::Press);
+                        }
+                    }
                 }
             }
-            dscom::MOUSE_WHEEL_UP => {
-                enigo.mouse_scroll_y(-2);
+            dscom::MOUSE_WHEEL_UP => unsafe {
+                if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                    let _ = eg.scroll(-2, Axis::Vertical);
+                }
             }
-            dscom::MOUSE_WHEEL_DOWN => {
-                enigo.mouse_scroll_y(2);
+            dscom::MOUSE_WHEEL_DOWN => unsafe {
+                if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                    let _ = eg.scroll(2, Axis::Vertical);
+                }
             }
             dscom::MOVE => {
                 stream.read_exact(&mut move_cmd).unwrap();
                 let x = ((move_cmd[0] as i32) << 8) | (move_cmd[1] as i32);
                 let y = ((move_cmd[2] as i32) << 8) | (move_cmd[3] as i32);
-                enigo.mouse_move_to(x, y);
+                unsafe {
+                    if let std::result::Result::Ok(mut eg) = ENIGO.lock() {
+                        let _ = eg.move_mouse(x, y, Coordinate::Abs);
+                    }
+                }
             }
             _ => {
                 return;
