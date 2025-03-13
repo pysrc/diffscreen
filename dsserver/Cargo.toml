@@ -4,6 +4,7 @@ version = "0.5.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+build = "build.rs"
 
 [dependencies]
 dscom = {path = "../dscom"}
@@ -12,3 +13,6 @@ scrap = "0.5"
 
 vpx-codec = { path = "../libs/vpx-codec" }
 enigo = {path = "../libs/enigo"}
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
