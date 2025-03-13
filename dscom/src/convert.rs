@@ -48,23 +48,28 @@ fn clamp(x: i32) -> u8 {
 }
 
 #[allow(dead_code)]
-pub fn i420_to_rgb(width: usize, height: usize, sy: &[u8], su: &[u8], sv: &[u8], dest: &mut [u8]) {
+pub fn i420_to_rgb(width: usize, height: usize, sy: &[u8], su: &[u8], sv: &[u8], dest: &mut [u8], crop_width: usize, crop_height: usize) {
+    // 确保裁剪尺寸不超过原始尺寸
+    let crop_width = crop_width.min(width);
+    let crop_height = crop_height.min(height);
     let uvw = width >> 1;
-    for i in 0..height {
+    for i in 0..crop_height {
         let sw = i * width;
+        let swc = i * crop_width;
         let t = (i >> 1) * uvw;
-        for j in 0..width {
-            let mut rgbstart = sw + j;
+        for j in 0..crop_width {
+            let rgbstart = sw + j;
+            let mut rgbstartc = swc + j;
             let uvi = t + (j >> 1);
 
             let y = sy[rgbstart] as i32;
             let u = su[uvi] as i32 - 128;
             let v = sv[uvi] as i32 - 128;
 
-            rgbstart *= 3;
-            dest[rgbstart] = clamp(y + (v * 359 >> 8));
-            dest[rgbstart + 1] = clamp(y - (u * 88 >> 8) - (v * 182 >> 8));
-            dest[rgbstart + 2] = clamp(y + (u * 453 >> 8));
+            rgbstartc *= 3;
+            dest[rgbstartc] = clamp(y + (v * 359 >> 8));
+            dest[rgbstartc + 1] = clamp(y - (u * 88 >> 8) - (v * 182 >> 8));
+            dest[rgbstartc + 2] = clamp(y + (u * 453 >> 8));
 
         }
     }

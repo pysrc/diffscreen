@@ -1,4 +1,3 @@
-use enigo::agent::Agent;
 use enigo::Axis;
 use enigo::Coordinate;
 use enigo::Direction;

@@ -10,8 +10,6 @@ use std::hash::Hasher;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -111,19 +109,13 @@ fn draw(host: String, pwd: String) {
     let iw = (((meta[0] as u16) << 8) | meta[1] as u16) as i32;
     let ih = (((meta[2] as u16) << 8) | meta[3] as u16) as i32;
 
-    let wh = Arc::new((AtomicI32::new(iw), AtomicI32::new(ih)));
-
-
-    // let dlen = (w * h * 3) as usize;
-
-    let work_buf = Arc::new(RwLock::new((0usize, 0usize, Vec::<u8>::new())));
+    let work_buf = Arc::new(RwLock::new(vec![0u8; (iw * ih * 3) as _]));
     let draw_work_buf = work_buf.clone();
     let mut hooked = false;
     let mut bmap = bitmap::Bitmap::new();
     let mut cmd_buf = [0u8; 5];
-    let wh1 = wh.clone();
     frame.handle(move |f, ev| {
-        let (w, h) = (wh1.0.load(Ordering::Relaxed), wh1.1.load(Ordering::Relaxed));
+        let (w, h) = (iw, ih);
         match ev {
             Event::Enter => {
                 // 进入窗口
@@ -223,7 +215,7 @@ fn draw(host: String, pwd: String) {
         if let Ok(p) = draw_work_buf.read() {
             unsafe {
                 if let Ok(mut image) =
-                    image::RgbImage::from_data2(&p.2, p.0 as _, p.1 as _, enums::ColorDepth::Rgb8 as i32, 0)
+                    image::RgbImage::from_data2(&p, iw as _, ih as _, enums::ColorDepth::Rgb8 as i32, 0)
                 {
                     image.scale(frame.width(), frame.height(), false, true);
                     image.draw(frame.x(), frame.y(), frame.width(), frame.height());             
@@ -265,12 +257,7 @@ fn draw(host: String, pwd: String) {
                 for ele in pkgs {
                     let (y, u, v) = ele.data();
                     if let Ok(mut p) = work_buf.write() {
-                        p.0 = ele.width();
-                        p.1 = ele.height();
-                        wh.0.store(ele.width() as _, Ordering::Relaxed);
-                        wh.1.store(ele.height() as _, Ordering::Relaxed);
-                        p.2.resize(ele.width() * ele.height() * 3, 0u8);
-                        dscom::convert::i420_to_rgb(ele.width(), ele.height(), y, u, v, &mut p.2);
+                        dscom::convert::i420_to_rgb(ele.width(), ele.height(), y, u, v, &mut p, iw as _, ih as _);
                     }
                     tx.send(Msg::Draw);
                 }
